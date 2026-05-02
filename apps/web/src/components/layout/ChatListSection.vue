@@ -597,34 +597,6 @@ function handleTabClickCapture(event: MouseEvent) {
                 {{ t('chatList.addToAIContext') }}
               </ContextMenuItem>
             </ContextMenuContent>
-
-            <div
-              v-if="chat.isForum && isForumExpanded(chat.id)"
-              class="mx-3 mb-2 ml-14 border-l border-border/60 pl-3 space-y-1"
-            >
-              <button
-                v-for="topic in chatTopicsStore.getTopics(String(chat.id))"
-                :key="topic.topicId"
-                class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                @click="openTopic(chat.id, topic.topicId)"
-              >
-                <span class="i-lucide-list-tree h-3.5 w-3.5 shrink-0" />
-                <span class="min-w-0 flex-1 truncate">{{ topic.title }}</span>
-                <span
-                  v-if="(topic.unreadCount ?? 0) > 0"
-                  class="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground"
-                >
-                  {{ topic.unreadCount! > 99 ? '99+' : topic.unreadCount }}
-                </span>
-              </button>
-              <button
-                class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-primary transition-colors hover:bg-primary/10"
-                @click="resyncTopics(chat.id)"
-              >
-                <span class="i-lucide-refresh-cw h-3.5 w-3.5" />
-                <span>{{ t('chatList.resyncTopics') }}</span>
-              </button>
-            </div>
           </ContextMenu>
 
           <div

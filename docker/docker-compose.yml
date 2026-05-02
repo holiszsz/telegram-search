@@ -44,6 +44,7 @@ services:
         condition: service_healthy
     volumes:
       - app_data:/app/data
+      - ./nginx.conf:/etc/nginx/nginx.conf.template:ro
     restart: unless-stopped
     env_file:
       - path: .env.example
@@ -53,7 +54,7 @@ services:
       - path: .env.local
         required: false
     healthcheck:
-      test: [CMD-SHELL, 'curl -f http://localhost:3000/health || exit 1']
+      test: [CMD-SHELL, 'wget -qO- http://127.0.0.1:3333/health >/dev/null || exit 1']
       interval: 30s
       timeout: 10s
       retries: 3

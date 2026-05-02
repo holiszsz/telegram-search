@@ -36,7 +36,8 @@ describe('models/chats', () => {
       {
         id: 2,
         name: 'Chat 2',
-        type: 'group',
+        type: 'supergroup',
+        isForum: true,
         lastMessageDate: new Date('2024-01-02T00:00:00Z'),
         accessHash: 'hash2',
       },
@@ -49,6 +50,7 @@ describe('models/chats', () => {
 
     const chatsInDb = await db.select().from(joinedChatsTable)
     expect(chatsInDb.map(c => c.chat_name).sort()).toEqual(['Chat 1', 'Chat 2'])
+    expect(chatsInDb.find(c => c.chat_id === '2')?.is_forum).toBe(true)
     // Check access_hash in joinedChatsTable - should NOT be there anymore (moved to account_joined_chats)
     // const chat1 = chatsInDb.find(c => c.chat_name === 'Chat 1')
     // expect(chat1?.access_hash).toBe('hash1')
@@ -164,6 +166,28 @@ describe('models/chats', () => {
 
     expect(chats).toHaveLength(1)
     expect(chats[0].chat_name).toBe('Account1 Chat')
+  })
+
+  it('fetchChatsByAccountId round-trips is_forum', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    await chatModels.recordChats(db, [{
+      id: 100,
+      name: 'Forum Chat',
+      type: 'supergroup',
+      isForum: true,
+      accessHash: 'hash',
+    }], account.id)
+
+    const chats = (await chatModels.fetchChatsByAccountId(db, account.id)).unwrap()
+
+    expect(chats).toHaveLength(1)
+    expect(chats[0].is_forum).toBe(true)
   })
 
   it('isChatAccessibleByAccount returns true only when account is linked to chat', async () => {

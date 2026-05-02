@@ -1,4 +1,6 @@
+export * from './account-chat-topics'
 export * from './chat-messages'
+export * from './chat-topics'
 export * from './joined-chats'
 export * from './sticker-packs'
 export * from './stickers'

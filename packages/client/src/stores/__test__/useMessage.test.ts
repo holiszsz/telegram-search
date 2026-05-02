@@ -93,6 +93,25 @@ describe('useMessageStore', () => {
     expect(store.sortedMessageIds).toEqual(['10'])
   })
 
+  it('loads message context scoped to a topic', async () => {
+    const store = useMessageStore()
+    const messages: CoreMessage[] = [
+      createTestMessage({ platformMessageId: '10', chatId: 'chat-1', content: 'msg 10', platformTimestamp: 1000 }),
+    ]
+
+    waitForEventMock.mockResolvedValueOnce({ messages })
+
+    await store.loadMessageContext('chat-1', '10', { topicId: 'topic-1' })
+
+    // Context opened from a topic-filtered search must not fetch neighbors from
+    // other forum topics.
+    expect(sendEventMock).toHaveBeenCalledWith(CoreEventType.StorageFetchMessageContext, expect.objectContaining({
+      chatId: 'chat-1',
+      messageId: '10',
+      topicId: 'topic-1',
+    }))
+  })
+
   it('pushes messages', async () => {
     const store = useMessageStore()
     // Initialize first

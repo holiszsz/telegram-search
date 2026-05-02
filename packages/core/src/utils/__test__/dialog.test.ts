@@ -147,6 +147,7 @@ describe('resolveDialog', () => {
       avatarUpdatedAt: undefined,
       accessHash: '987654321',
       username: 'channel_name',
+      isForum: false,
     })
   })
 })

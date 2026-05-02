@@ -4,7 +4,8 @@ import type { CoreDialog } from '@tg-search/core/types'
 import type { ComponentPublicInstance } from 'vue'
 
 import { useLogger } from '@guiiai/logg'
-import { prefillChatAvatarIntoStore, useChatStore, useSettingsStore } from '@tg-search/client'
+import { prefillChatAvatarIntoStore, useBridge, useChatStore, useChatTopicsStore, useSettingsStore } from '@tg-search/client'
+import { CoreEventType } from '@tg-search/core'
 import { useMediaQuery } from '@vueuse/core'
 import { storeToRefs } from 'pinia'
 import { VList } from 'virtua/vue'
@@ -36,7 +37,9 @@ const route = useRoute()
 const router = useRouter()
 
 const chatStore = useChatStore()
+const chatTopicsStore = useChatTopicsStore()
 const settingsStore = useSettingsStore()
+const bridge = useBridge()
 const { selectedGroup, selectedFolderId } = storeToRefs(settingsStore)
 const isCoarsePointer = useMediaQuery('(pointer: coarse)')
 
@@ -144,6 +147,36 @@ function handleChatClick(chatId: number) {
   }
 
   void router.push(`/chat/${chatId}`)
+}
+
+const expandedForumChatIds = ref<Record<string, boolean>>({})
+
+function isForumExpanded(chatId: number) {
+  return expandedForumChatIds.value[String(chatId)] === true
+}
+
+function toggleForumTopics(chat: CoreDialog) {
+  const chatId = String(chat.id)
+  const expanded = !expandedForumChatIds.value[chatId]
+  expandedForumChatIds.value = {
+    ...expandedForumChatIds.value,
+    [chatId]: expanded,
+  }
+
+  if (expanded) {
+    chatTopicsStore.fetchTopics(chatId)
+  }
+}
+
+function openTopic(chatId: number, topicId: string) {
+  void router.push({
+    path: `/chat/${chatId}`,
+    query: { topic: topicId },
+  })
+}
+
+function resyncTopics(chatId: number) {
+  bridge.sendEvent(CoreEventType.ChatResyncRequest, { chatId: String(chatId) })
 }
 
 /**
@@ -516,6 +549,18 @@ function handleTabClickCapture(event: MouseEvent) {
                   </div>
                 </div>
 
+                <button
+                  v-if="chat.isForum && !isSelectionMode"
+                  class="h-7 w-7 inline-flex shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  :title="t('chatList.topics')"
+                  @click.stop="toggleForumTopics(chat)"
+                >
+                  <span
+                    class="i-lucide-chevron-right h-4 w-4 transition-transform"
+                    :class="isForumExpanded(chat.id) && 'rotate-90'"
+                  />
+                </button>
+
                 <div class="ml-auto w-14 flex shrink-0 flex-col items-end justify-between gap-1 text-right md:w-16">
                   <span
                     v-if="chat.lastMessageDate"
@@ -552,6 +597,34 @@ function handleTabClickCapture(event: MouseEvent) {
                 {{ t('chatList.addToAIContext') }}
               </ContextMenuItem>
             </ContextMenuContent>
+
+            <div
+              v-if="chat.isForum && isForumExpanded(chat.id)"
+              class="mx-3 mb-2 ml-14 border-l border-border/60 pl-3 space-y-1"
+            >
+              <button
+                v-for="topic in chatTopicsStore.getTopics(String(chat.id))"
+                :key="topic.topicId"
+                class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                @click="openTopic(chat.id, topic.topicId)"
+              >
+                <span class="i-lucide-list-tree h-3.5 w-3.5 shrink-0" />
+                <span class="min-w-0 flex-1 truncate">{{ topic.title }}</span>
+                <span
+                  v-if="(topic.unreadCount ?? 0) > 0"
+                  class="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground"
+                >
+                  {{ topic.unreadCount! > 99 ? '99+' : topic.unreadCount }}
+                </span>
+              </button>
+              <button
+                class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-primary transition-colors hover:bg-primary/10"
+                @click="resyncTopics(chat.id)"
+              >
+                <span class="i-lucide-refresh-cw h-3.5 w-3.5" />
+                <span>{{ t('chatList.resyncTopics') }}</span>
+              </button>
+            </div>
           </ContextMenu>
 
           <div
@@ -603,6 +676,18 @@ function handleTabClickCapture(event: MouseEvent) {
               </div>
             </div>
 
+            <button
+              v-if="chat.isForum && !isSelectionMode"
+              class="h-7 w-7 inline-flex shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              :title="t('chatList.topics')"
+              @click.stop="toggleForumTopics(chat)"
+            >
+              <span
+                class="i-lucide-chevron-right h-4 w-4 transition-transform"
+                :class="isForumExpanded(chat.id) && 'rotate-90'"
+              />
+            </button>
+
             <div class="ml-auto w-14 flex shrink-0 flex-col items-end justify-between gap-1 text-right md:w-16">
               <span
                 v-if="chat.lastMessageDate"
@@ -631,6 +716,34 @@ function handleTabClickCapture(event: MouseEvent) {
                 <span class="i-lucide-check h-3 w-3" />
               </div>
             </div>
+          </div>
+
+          <div
+            v-if="chat && chat.isForum && isForumExpanded(chat.id)"
+            class="mx-3 mb-2 ml-14 border-l border-border/60 pl-3 space-y-1"
+          >
+            <button
+              v-for="topic in chatTopicsStore.getTopics(String(chat.id))"
+              :key="topic.topicId"
+              class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              @click="openTopic(chat.id, topic.topicId)"
+            >
+              <span class="i-lucide-list-tree h-3.5 w-3.5 shrink-0" />
+              <span class="min-w-0 flex-1 truncate">{{ topic.title }}</span>
+              <span
+                v-if="(topic.unreadCount ?? 0) > 0"
+                class="shrink-0 rounded-full bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground"
+              >
+                {{ topic.unreadCount! > 99 ? '99+' : topic.unreadCount }}
+              </span>
+            </button>
+            <button
+              class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-primary transition-colors hover:bg-primary/10"
+              @click="resyncTopics(chat.id)"
+            >
+              <span class="i-lucide-refresh-cw h-3.5 w-3.5" />
+              <span>{{ t('chatList.resyncTopics') }}</span>
+            </button>
           </div>
         </template>
       </VList>

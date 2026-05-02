@@ -22,6 +22,7 @@ export async function retrieveVector(
     fromUserId?: string
     timeRange?: { start?: number, end?: number }
     chatIds?: string[]
+    topicId?: string
   },
 ): Promise<DBRetrievalMessages[]> {
   const similarity = getSimilaritySql(
@@ -40,6 +41,7 @@ export async function retrieveVector(
     filters?.chatIds?.length ? inArray(chatMessagesTable.in_chat_id, filters.chatIds) : undefined,
     gt(similarity, 0.5),
     filters?.fromUserId ? eq(chatMessagesTable.from_id, filters.fromUserId) : undefined,
+    filters?.topicId ? eq(chatMessagesTable.topic_id, filters.topicId) : undefined,
     filters?.timeRange?.start ? sql`${chatMessagesTable.platform_timestamp} >= ${filters.timeRange.start}` : undefined,
     filters?.timeRange?.end ? sql`${chatMessagesTable.platform_timestamp} <= ${filters.timeRange.end}` : undefined,
     // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).
@@ -61,6 +63,7 @@ export async function retrieveVector(
       from_user_uuid: chatMessagesTable.from_user_uuid,
       in_chat_id: chatMessagesTable.in_chat_id,
       in_chat_type: chatMessagesTable.in_chat_type,
+      topic_id: chatMessagesTable.topic_id,
       content: chatMessagesTable.content,
       is_reply: chatMessagesTable.is_reply,
       reply_to_name: chatMessagesTable.reply_to_name,

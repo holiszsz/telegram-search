@@ -63,6 +63,8 @@
     "forceLoadNewer": "强制加载更新的消息",
     "forceLoadOlder": "强制加载更早的消息",
     "messageSent": "消息已发送",
+    "resyncTopics": "重新同步话题",
+    "resyncTopicsStarted": "话题重新同步已开始",
     "summarize": "生成摘要",
     "search": "搜索",
     "searchContent": "搜索内容",
@@ -90,7 +92,9 @@
     "aiContextReady": "AI 上下文已就绪",
     "aiContextCount": "已加入 {count} 个对话",
     "selectionModeCount": "已选择 {count} 个对话用于 AI",
-    "selectionModeEntered": "已进入 AI 选择模式"
+    "selectionModeEntered": "已进入 AI 选择模式",
+    "topics": "话题",
+    "resyncTopics": "重新同步话题"
   },
   "chatSelector": {
     "filters": "筛选",
@@ -182,6 +186,8 @@
     "chatTypeGroup": "群组",
     "chatTypeSupergroup": "超级群组",
     "chatTypeChannel": "频道",
+    "topic": "话题",
+    "topicAll": "全部话题",
     "quickActions": "快捷动作",
     "commandOpenAI": "打开 AI 对话",
     "commandOpenAIDesc": "基于已同步数据发起全局 AI 对话",

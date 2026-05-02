@@ -28,6 +28,7 @@ async function recordChats(db: CoreDB, chats: CoreDialog[], accountId: string): 
         chat_id: chat.id.toString(),
         chat_name: chat.name,
         chat_type: chat.type,
+        is_forum: chat.isForum ?? false,
         chat_username: chat.username || null,
         last_message_from_name: chat.lastMessageFromName || null,
         last_message: chat.lastMessage || null,
@@ -38,6 +39,7 @@ async function recordChats(db: CoreDB, chats: CoreDialog[], accountId: string): 
         set: {
           chat_name: sql`excluded.chat_name`,
           chat_type: sql`excluded.chat_type`,
+          is_forum: sql`excluded.is_forum`,
           chat_username: sql`COALESCE(excluded.chat_username, ${joinedChatsTable.chat_username})`,
           last_message_from_name: sql`excluded.last_message_from_name`,
           last_message: sql`excluded.last_message`,
@@ -103,6 +105,7 @@ async function fetchChatsByAccountId(db: CoreDB, accountId: string): PromiseResu
       chat_id: joinedChatsTable.chat_id,
       chat_name: joinedChatsTable.chat_name,
       chat_type: joinedChatsTable.chat_type,
+      is_forum: joinedChatsTable.is_forum,
       chat_username: joinedChatsTable.chat_username,
       last_message_from_name: joinedChatsTable.last_message_from_name,
       last_message: joinedChatsTable.last_message,

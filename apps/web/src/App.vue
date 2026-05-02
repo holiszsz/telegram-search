@@ -6,6 +6,8 @@ import { onBeforeUnmount, onMounted } from 'vue'
 import { RouterView } from 'vue-router'
 import { Toaster } from 'vue-sonner'
 
+import TakeoutConfirmDialog from './components/TakeoutConfirmDialog.vue'
+
 import { usePWAStore } from './stores/pwa'
 
 onMounted(() => {
@@ -58,6 +60,7 @@ onBeforeUnmount(() => {
 <template>
   <div class="min-h-screen bg-background text-foreground transition-all duration-300 ease-in-out">
     <Toaster position="top-right" :expand="true" :rich-colors="true" />
+    <TakeoutConfirmDialog />
 
     <RouterView v-slot="{ Component }">
       <Transition>

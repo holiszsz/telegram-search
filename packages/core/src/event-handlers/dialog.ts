@@ -3,8 +3,53 @@ import type { Logger } from '@guiiai/logg'
 import type { CoreContext } from '../context'
 import type { Models } from '../models'
 import type { DialogService } from '../services'
+import type { CoreDialog } from '../types/dialog'
 
 import { CoreEventType } from '../types/events'
+
+async function fetchTopicsForDialog(
+  ctx: CoreContext,
+  logger: Logger,
+  dbModels: Models,
+  dialogService: DialogService,
+  dialog: Pick<CoreDialog, 'id' | 'accessHash' | 'isForum'>,
+) {
+  if (!dialog.isForum) {
+    return
+  }
+
+  const chatId = String(dialog.id)
+  if (!dialog.accessHash) {
+    logger.withFields({ chatId }).warn('Cannot fetch forum topics without access hash')
+    return
+  }
+
+  const topics = (await dialogService.fetchTopics(chatId, dialog.accessHash)).orUndefined()
+  if (!topics) {
+    return
+  }
+
+  const accountId = ctx.getCurrentAccountId()
+  const recordedTopics = await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+  ctx.emitter.emit(CoreEventType.DialogTopicsData, { chatId, topics: recordedTopics })
+}
+
+async function fetchAllForumTopics(
+  ctx: CoreContext,
+  logger: Logger,
+  dbModels: Models,
+  dialogService: DialogService,
+  dialogs: CoreDialog[],
+) {
+  for (const dialog of dialogs.filter(dialog => dialog.isForum)) {
+    try {
+      await fetchTopicsForDialog(ctx, logger, dbModels, dialogService, dialog)
+    }
+    catch (error) {
+      logger.withFields({ chatId: dialog.id }).withError(error).warn('Failed to sync forum topics')
+    }
+  }
+}
 
 export async function fetchDialogs(ctx: CoreContext, logger: Logger, dbModels: Models, dialogService: DialogService) {
   logger.verbose('Fetching dialogs')
@@ -37,6 +82,7 @@ export async function fetchDialogs(ctx: CoreContext, logger: Logger, dbModels: M
 
   ctx.emitter.emit(CoreEventType.DialogData, { dialogs, pinnedDialogIds })
   ctx.emitter.emit(CoreEventType.StorageRecordDialogs, { dialogs, accountId })
+  await fetchAllForumTopics(ctx, logger, dbModels, dialogService, dialogs)
 }
 
 export function registerDialogEventHandlers(ctx: CoreContext, logger: Logger, dbModels: Models) {
@@ -54,6 +100,27 @@ export function registerDialogEventHandlers(ctx: CoreContext, logger: Logger, db
       const accountId = ctx.getCurrentAccountId()
 
       ctx.emitter.emit(CoreEventType.StorageRecordChatFolders, { folders, accountId })
+    })
+
+    ctx.emitter.on(CoreEventType.DialogTopicsFetch, async ({ chatId }) => {
+      logger.withFields({ chatId }).verbose('Fetching forum topics')
+      const accountId = ctx.getCurrentAccountId()
+      const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId)).expect('Failed to check chat access')
+
+      if (!hasAccess) {
+        ctx.withError('Unauthorized chat access', 'Account does not have access to requested chat topics')
+        return
+      }
+
+      const chatAccess = (await dbModels.chatModels.findChatAccessHash(ctx.getDB(), accountId, chatId)).expect('Failed to resolve chat access hash')
+      if (!chatAccess?.accessHash) {
+        ctx.withError('Missing chat access hash', 'Cannot fetch forum topics without a stored access hash')
+        return
+      }
+
+      const topics = (await dialogService.fetchTopics(chatId, chatAccess.accessHash)).expect('Failed to fetch forum topics')
+      const recordedTopics = await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+      ctx.emitter.emit(CoreEventType.DialogTopicsData, { chatId, topics: recordedTopics })
     })
 
     // Prioritized single-avatar fetch for viewport-visible items

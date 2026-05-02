@@ -23,6 +23,7 @@ export function convertToCoreMessageFromDB(message: DBSelectMessage): CoreMessag
     fromUserUuid: message.from_user_uuid ?? undefined,
 
     content: message.content,
+    topicId: message.topic_id || undefined,
 
     reply: {
       isReply: message.is_reply,
@@ -57,6 +58,7 @@ export function convertToDBInsertMessage(
     from_user_uuid: message.fromUserUuid,
     in_chat_id: message.chatId,
     in_chat_type: type,
+    topic_id: message.topicId ?? '',
     content: message.content,
     is_reply: message.reply.isReply,
     reply_to_name: message.reply.replyToName,
@@ -97,5 +99,6 @@ export function convertToCoreRetrievalMessages(messages: DBRetrievalMessages[]):
     combinedScore: message?.combined_score,
     chatName: message?.chat_name ?? undefined,
     inChatType: message?.in_chat_type,
+    topicId: message?.topic_id || undefined,
   })) satisfies CoreRetrievalMessages[]
 }

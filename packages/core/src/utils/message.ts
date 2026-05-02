@@ -48,6 +48,13 @@ export function convertToCoreMessage(message: Api.Message): Result<CoreMessage> 
   const messageId = String(message.id)
   const fromId = String(senderId?.toJSNumber())
   const content = message.message
+  const replyTo = message.replyTo as {
+    replyToTopId?: { toString: () => string }
+    replyToMsgId?: { toString: () => string }
+    forumTopic?: boolean
+  } | undefined
+  const topicId = replyTo?.replyToTopId?.toString()
+    ?? (replyTo?.forumTopic ? replyTo.replyToMsgId?.toString() : undefined)
 
   // Get forward info
   const forward: CoreMessageForward = {
@@ -85,6 +92,7 @@ export function convertToCoreMessage(message: Api.Message): Result<CoreMessage> 
       fromId,
       fromName,
       content,
+      topicId,
       media,
       reply,
       forward,

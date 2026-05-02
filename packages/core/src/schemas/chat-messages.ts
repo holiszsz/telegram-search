@@ -20,6 +20,7 @@ export const chatMessagesTable = pgTable('chat_messages', {
   owner_account_id: uuid().references(() => accountsTable.id, { onDelete: 'cascade' }),
   in_chat_id: text().notNull().default(''),
   in_chat_type: text().$type<JoinedChatType>().notNull(),
+  topic_id: text().notNull().default(''),
   content: text().notNull().default(''),
   is_reply: boolean().notNull().default(false),
   reply_to_name: text().notNull().default(''),
@@ -42,4 +43,5 @@ export const chatMessagesTable = pgTable('chat_messages', {
   index('chat_messages_content_vector_768_index').using('hnsw', table.content_vector_768.op('vector_cosine_ops')),
   index('jieba_tokens_index').using('gin', table.jieba_tokens.op('jsonb_path_ops')),
   index('chat_messages_from_user_uuid_index').on(table.from_user_uuid),
+  index('chat_messages_in_chat_topic_timestamp_index').on(table.in_chat_id, table.topic_id, table.platform_timestamp),
 ])

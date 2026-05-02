@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CoreDialog, CoreMessage } from '@tg-search/core/types'
 
-import { useBridge, useChatStore, useMessageStore, useSessionStore, useSettingsStore } from '@tg-search/client'
+import { useBridge, useChatStore, useChatTopicsStore, useMessageStore, useSessionStore, useSettingsStore } from '@tg-search/client'
 import { CoreEventType } from '@tg-search/core'
 import { storeToRefs } from 'pinia'
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
@@ -30,6 +30,7 @@ const route = useRoute('/chat/:id')
 const id = route.params.id
 
 const chatStore = useChatStore()
+const chatTopicsStore = useChatTopicsStore()
 const messageStore = useMessageStore()
 const bridge = useBridge()
 const { debugMode } = storeToRefs(useSettingsStore())
@@ -37,6 +38,8 @@ const { activeSessionId } = storeToRefs(useSessionStore())
 
 const { sortedMessageIds, messageWindow, sortedMessageArray } = storeToRefs(messageStore)
 const currentChat = computed<CoreDialog | undefined>(() => chatStore.getChat(id.toString()))
+const topicId = computed(() => typeof route.query.topic === 'string' ? route.query.topic : undefined)
+const currentTopic = computed(() => chatTopicsStore.getTopic(id.toString(), topicId.value))
 const chatTelegramLink = computed(() => {
   if (!currentChat.value)
     return null
@@ -49,7 +52,7 @@ const chatTelegramLink = computed(() => {
 const messageFetchLimit = 50
 const messageWindowSize = 500
 const messageOffset = ref(0)
-const { isLoading: isLoadingMessages, fetchMessages } = messageStore.useFetchMessages(id.toString(), messageWindowSize)
+const { isLoading: isLoadingMessages, fetchMessages } = messageStore.useFetchMessages(id.toString(), messageWindowSize, () => topicId.value)
 
 const isLoadingOlder = ref(false)
 const isLoadingNewer = ref(false)
@@ -75,6 +78,10 @@ const targetMessageParams = computed(() => ({
 
 // Initial load when component mounts
 onMounted(async () => {
+  if (currentChat.value?.isForum) {
+    chatTopicsStore.fetchTopics(id.toString())
+  }
+
   const initialMessageId = targetMessageParams.value.messageId
 
   if (typeof initialMessageId === 'string' && initialMessageId.length > 0) {
@@ -86,6 +93,12 @@ onMounted(async () => {
     await loadOlderMessages()
   }
 })
+
+watch([currentChat, topicId], ([chat]) => {
+  if (chat?.isForum) {
+    chatTopicsStore.fetchTopics(id.toString())
+  }
+}, { immediate: true })
 
 // When switching accounts while staying on the same chat route, reset the
 // message window and load the dialog history for the new account.
@@ -103,6 +116,17 @@ watch(
     await loadOlderMessages()
   },
 )
+
+watch(topicId, async (nextTopicId, previousTopicId) => {
+  if (nextTopicId === previousTopicId) {
+    return
+  }
+
+  isContextMode.value = false
+  resetPagination()
+  messageStore.replaceMessages([], { chatId: id.toString(), limit: messageWindowSize })
+  await loadOlderMessages()
+})
 
 // Load older messages when scrolling to top.
 // Returns a status so VirtualMessageList's top-load state machine can
@@ -180,6 +204,11 @@ function openTelegram() {
   }
 }
 
+function resyncTopics() {
+  bridge.sendEvent(CoreEventType.ChatResyncRequest, { chatId: id.toString() })
+  toast.info(t('chat.resyncTopicsStarted'))
+}
+
 function resetPagination() {
   messageOffset.value = 0
 }
@@ -197,6 +226,7 @@ async function openMessageContext(messageId: string, messageUuid?: string) {
       before: 40,
       after: 40,
       limit: messageWindowSize,
+      topicId: topicId.value,
     })
 
     if (messages.length === 0) {
@@ -304,11 +334,23 @@ watch(
             {{ currentChat?.name }}
           </h2>
           <p v-if="currentChat?.id" class="truncate text-xs text-muted-foreground">
+            <template v-if="currentTopic">
+              {{ currentTopic.title }} ·
+            </template>
             ID: {{ currentChat?.id }}
           </p>
         </div>
       </div>
       <div class="flex shrink-0 items-center gap-1">
+        <Button
+          v-if="currentChat?.isForum"
+          icon="i-lucide-refresh-cw"
+          variant="ghost"
+          size="sm"
+          @click="resyncTopics"
+        >
+          {{ t('chat.resyncTopics') }}
+        </Button>
         <SummaryDialog :chat-id="id.toString()">
           <template #default="{ open }">
             <Button

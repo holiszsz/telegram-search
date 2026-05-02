@@ -8,6 +8,10 @@ export function registerTakeoutEventHandlers(ctx: CoreContext, takeoutService: T
     await takeoutService.runTakeout(params)
   })
 
+  ctx.emitter.on(CoreEventType.ChatResyncRequest, async (params) => {
+    await takeoutService.runChatResync(params)
+  })
+
   ctx.emitter.on(CoreEventType.TakeoutTaskAbort, ({ taskId }) => {
     takeoutService.abortTask(taskId)
   })

@@ -5,6 +5,7 @@ import { CoreEventType } from '@tg-search/core'
 
 import { useAvatarStore } from '../stores/useAvatar'
 import { useChatStore } from '../stores/useChat'
+import { useChatTopicsStore } from '../stores/useChatTopics'
 import { persistChatAvatar } from '../utils/avatar-cache'
 import { bytesToBlob, canDecodeAvatar } from '../utils/image'
 
@@ -33,6 +34,10 @@ export function registerDialogEventHandlers(
   // Chat folders
   registerEventHandler(CoreEventType.DialogFoldersData, (data) => {
     useChatStore().folders = data.folders
+  })
+
+  registerEventHandler(CoreEventType.DialogTopicsData, (data) => {
+    useChatTopicsStore().setTopics(data.chatId, data.topics)
   })
 
   /**

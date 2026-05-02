@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { DialogType } from '@tg-search/core/types'
 
-import { useChatStore } from '@tg-search/client'
+import { useChatStore, useChatTopicsStore } from '@tg-search/client'
 import { onKeyStroke, useDebounce, useMediaQuery } from '@vueuse/core'
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -37,6 +37,7 @@ const { t } = useI18n()
 const router = useRouter()
 const isMobile = useMediaQuery('(max-width: 768px)')
 const chatStore = useChatStore()
+const chatTopicsStore = useChatTopicsStore()
 
 const isOpen = defineModel<boolean>('open', { required: true })
 const inputRef = ref<InstanceType<typeof Input> | null>(null)
@@ -49,6 +50,7 @@ const {
   chatTypeFilter,
   keyword,
   searchScope,
+  topicFilter,
 } = useSearchDialogState(cacheKey, hasCurrentChatScope)
 const keywordDebounced = useDebounce(keyword, 1000)
 
@@ -61,6 +63,18 @@ const activeChatTypeFilterMeta = computed(() => {
     ?? chatTypeFilterMeta.value[0]
 })
 const hasCustomChatTypeFilter = computed(() => chatTypeFilter.value !== 'all')
+const currentChat = computed(() => props.chatId ? chatStore.getChat(props.chatId) : undefined)
+const canUseTopicFilter = computed(() => searchScope.value === 'current' && currentChat.value?.isForum === true && !!props.chatId)
+const currentTopics = computed(() => props.chatId ? chatTopicsStore.getTopics(props.chatId) : [])
+const activeTopicFilterMeta = computed(() => {
+  if (topicFilter.value === 'all') {
+    return t('searchDialog.topicAll')
+  }
+
+  return currentTopics.value.find(topic => topic.topicId === topicFilter.value)?.title
+    ?? t('searchDialog.topic')
+})
+const hasCustomTopicFilter = computed(() => topicFilter.value !== 'all')
 
 const scopedCommandChatIds = computed(() => {
   return (searchScope.value === 'current' && props.chatId)
@@ -116,12 +130,27 @@ function selectChatTypeFilter(nextFilter: typeof chatTypeFilter.value) {
   chatTypeFilter.value = nextFilter
 }
 
+function selectTopicFilter(nextFilter: typeof topicFilter.value) {
+  topicFilter.value = nextFilter
+}
+
 const scopedChatId = computed(() => {
   if (searchScope.value !== 'current') {
     return undefined
   }
   return props.chatId
 })
+
+watch(canUseTopicFilter, (enabled) => {
+  if (!enabled) {
+    topicFilter.value = 'all'
+    return
+  }
+
+  if (props.chatId) {
+    chatTopicsStore.fetchTopics(props.chatId)
+  }
+}, { immediate: true })
 
 const {
   hasResults,
@@ -142,6 +171,7 @@ const {
   keyword,
   keywordDebounced,
   scopedChatId,
+  topicFilter,
 })
 
 const filteredMessages = computed(() => {
@@ -347,6 +377,49 @@ watch(isOpen, (open) => {
                   <span
                     v-if="chatTypeFilter === chatType.key"
                     class="i-lucide-check h-4 w-4 text-primary"
+                  />
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            <DropdownMenu v-if="activeMode !== 'commands' && canUseTopicFilter">
+              <DropdownMenuTrigger as-child>
+                <button
+                  class="h-8 min-w-0 inline-flex shrink-0 items-center gap-2 border rounded-full px-3 text-xs transition-colors"
+                  :class="hasCustomTopicFilter
+                    ? 'border-primary/20 bg-primary/10 text-primary'
+                    : 'border-border/60 text-muted-foreground hover:bg-muted hover:text-foreground'"
+                >
+                  <span class="i-lucide-list-tree h-3.5 w-3.5" />
+                  <span class="max-w-40 truncate">{{ activeTopicFilterMeta }}</span>
+                  <span class="i-lucide-chevron-down h-3.5 w-3.5 opacity-70" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" class="max-h-80 min-w-[240px] overflow-y-auto border-border/60 rounded-2xl bg-background/95 p-2 backdrop-blur-xl">
+                <DropdownMenuLabel class="px-2 py-1.5 text-xs text-muted-foreground">
+                  {{ t('searchDialog.topic') }}
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator class="my-1" />
+                <DropdownMenuItem
+                  class="flex items-center justify-between rounded-xl px-3 py-2"
+                  @select="selectTopicFilter('all')"
+                >
+                  <span>{{ t('searchDialog.topicAll') }}</span>
+                  <span
+                    v-if="topicFilter === 'all'"
+                    class="i-lucide-check h-4 w-4 text-primary"
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  v-for="topic in currentTopics"
+                  :key="topic.topicId"
+                  class="flex items-center justify-between gap-3 rounded-xl px-3 py-2"
+                  @select="selectTopicFilter(topic.topicId)"
+                >
+                  <span class="min-w-0 truncate">{{ topic.title }}</span>
+                  <span
+                    v-if="topicFilter === topic.topicId"
+                    class="i-lucide-check h-4 w-4 shrink-0 text-primary"
                   />
                 </DropdownMenuItem>
               </DropdownMenuContent>

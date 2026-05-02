@@ -63,6 +63,8 @@
     "forceLoadNewer": "Force load newer messages",
     "forceLoadOlder": "Force load older messages",
     "messageSent": "Message sent",
+    "resyncTopics": "Resync topics",
+    "resyncTopicsStarted": "Topic resync started",
     "summarize": "Summarize",
     "search": "Search",
     "searchContent": "Search content",
@@ -90,7 +92,9 @@
     "aiContextReady": "AI context is ready",
     "aiContextCount": "{count} chats added",
     "selectionModeCount": "{count} chats selected for AI",
-    "selectionModeEntered": "AI selection mode is on"
+    "selectionModeEntered": "AI selection mode is on",
+    "topics": "Topics",
+    "resyncTopics": "Resync topics"
   },
   "chatSelector": {
     "filters": "Filters",
@@ -182,6 +186,8 @@
     "chatTypeGroup": "Groups",
     "chatTypeSupergroup": "Supergroups",
     "chatTypeChannel": "Channels",
+    "topic": "Topic",
+    "topicAll": "All topics",
     "quickActions": "Quick actions",
     "commandOpenAI": "Open AI Chat",
     "commandOpenAIDesc": "Start a global AI conversation with your synced data",

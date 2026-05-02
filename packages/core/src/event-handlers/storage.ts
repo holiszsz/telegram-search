@@ -20,8 +20,8 @@ function hasNoMedia(message: CoreMessage): boolean {
 export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, dbModels: Models) {
   logger = logger.withContext('core:storage:event')
 
-  ctx.emitter.on(CoreEventType.StorageFetchMessages, async ({ chatId, pagination }) => {
-    logger.withFields({ chatId, pagination }).verbose('Fetching messages')
+  ctx.emitter.on(CoreEventType.StorageFetchMessages, async ({ chatId, pagination, topicId }) => {
+    logger.withFields({ chatId, pagination, topicId }).verbose('Fetching messages')
 
     const accountId = ctx.getCurrentAccountId()
     const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId)).expect('Failed to check chat access')
@@ -31,15 +31,15 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
       return
     }
 
-    const messages = (await dbModels.chatMessageModels.fetchMessagesWithPhotos(ctx.getDB(), dbModels.photoModels, accountId, chatId, pagination)).unwrap()
+    const messages = (await dbModels.chatMessageModels.fetchMessagesWithPhotos(ctx.getDB(), dbModels.photoModels, accountId, chatId, pagination, topicId)).unwrap()
     ctx.emitter.emit(CoreEventType.StorageMessages, { messages })
   })
 
-  ctx.emitter.on(CoreEventType.StorageFetchMessageContext, async ({ chatId, messageId, before = 20, after = 20 }) => {
+  ctx.emitter.on(CoreEventType.StorageFetchMessageContext, async ({ chatId, messageId, topicId, before = 20, after = 20 }) => {
     const safeBefore = Math.max(0, before)
     const safeAfter = Math.max(0, after)
 
-    logger.withFields({ chatId, messageId, before: safeBefore, after: safeAfter }).verbose('Fetching message context')
+    logger.withFields({ chatId, messageId, topicId, before: safeBefore, after: safeAfter }).verbose('Fetching message context')
 
     const accountId = ctx.getCurrentAccountId()
     const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId)).expect('Failed to check chat access')
@@ -53,10 +53,10 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
       ctx.getDB(),
       dbModels.photoModels,
       accountId,
-      { chatId, messageId, before: safeBefore, after: safeAfter },
+      { chatId, messageId, topicId, before: safeBefore, after: safeAfter },
     )).unwrap()
 
-    ctx.emitter.emit(CoreEventType.StorageMessagesContext, { chatId, messageId, messages })
+    ctx.emitter.emit(CoreEventType.StorageMessagesContext, { chatId, messageId, topicId, messages })
 
     // After emitting the initial messages, identify messages that might be missing media
     // and trigger a fetch from Telegram to download them
@@ -128,6 +128,7 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
         id: Number(chat.chat_id),
         name: chat.chat_name,
         type: chat.chat_type,
+        isForum: chat.is_forum,
         isContact: chat.is_contact ?? undefined,
         messageCount: chatMessageStats?.message_count,
         lastMessageFromName: chat.last_message_from_name ?? undefined,
@@ -181,6 +182,7 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
         id: Number(chat.chat_id),
         name: chat.chat_name,
         type: chat.chat_type,
+        isForum: chat.is_forum,
         isContact: chat.is_contact ?? undefined,
         messageCount: chatMessageStats?.message_count,
         lastMessageFromName: chat.last_message_from_name ?? undefined,
@@ -204,8 +206,18 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
       return
     }
 
-    if (params.chatId) {
-      const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, params.chatId)).expect('Failed to check chat access')
+    const chatIds = params.chatIds ?? (params.chatId ? [params.chatId] : undefined)
+
+    if (params.topicId && chatIds?.length !== 1) {
+      ctx.withError('Invalid topic search', 'Topic search must be scoped to exactly one chat')
+      return
+    }
+
+    if (chatIds?.length) {
+      const accessResults = await Promise.all(chatIds.map(chatId =>
+        dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId),
+      ))
+      const hasAccess = accessResults.every(result => result.expect('Failed to check chat access'))
 
       if (!hasAccess) {
         ctx.withError('Unauthorized chat access', 'Account does not have access to requested chat messages')
@@ -217,7 +229,8 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
     const filters = {
       fromUserId: params.fromUserId,
       timeRange: params.timeRange,
-      chatIds: params.chatIds,
+      chatIds,
+      topicId: params.topicId,
     }
 
     const embeddingSettings = (await ctx.getAccountSettings()).embedding

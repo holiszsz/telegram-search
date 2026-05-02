@@ -1,6 +1,6 @@
 import type { Ref } from 'vue'
 
-import type { SearchDialogChatTypeFilter, SearchMode, SearchScope } from '../utils/search-dialog'
+import type { SearchDialogChatTypeFilter, SearchDialogTopicFilter, SearchMode, SearchScope } from '../utils/search-dialog'
 
 import { computed, ref, watch } from 'vue'
 
@@ -9,6 +9,7 @@ interface SearchDialogStateSnapshot {
   chatTypeFilter: SearchDialogChatTypeFilter
   keyword: string
   searchScope: SearchScope
+  topicFilter: SearchDialogTopicFilter
 }
 
 const DEFAULT_STATE: SearchDialogStateSnapshot = {
@@ -16,6 +17,7 @@ const DEFAULT_STATE: SearchDialogStateSnapshot = {
   activeMode: 'all',
   chatTypeFilter: 'all',
   searchScope: 'all',
+  topicFilter: 'all',
 }
 
 const searchDialogStateCache = new Map<string, SearchDialogStateSnapshot>()
@@ -34,6 +36,7 @@ function createStateSnapshot(cacheKey: string, hasCurrentChatScope: boolean): Se
     activeMode: cachedState.activeMode,
     chatTypeFilter: cachedState.chatTypeFilter,
     searchScope: hasCurrentChatScope ? cachedState.searchScope : 'all',
+    topicFilter: hasCurrentChatScope ? cachedState.topicFilter : 'all',
   }
 }
 
@@ -43,6 +46,7 @@ export function useSearchDialogState(cacheKey: Ref<string>, hasCurrentChatScope:
   const keyword = ref(initialState.keyword)
   const activeMode = ref<SearchMode>(initialState.activeMode)
   const chatTypeFilter = ref<SearchDialogChatTypeFilter>(initialState.chatTypeFilter)
+  const topicFilter = ref<SearchDialogTopicFilter>(initialState.topicFilter)
   const _searchScope = ref<SearchScope>(initialState.searchScope)
 
   // Guard: never allow 'current' scope when there is no current chat
@@ -58,19 +62,21 @@ export function useSearchDialogState(cacheKey: Ref<string>, hasCurrentChatScope:
       keyword.value = nextState.keyword
       activeMode.value = nextState.activeMode
       chatTypeFilter.value = nextState.chatTypeFilter
+      topicFilter.value = nextState.topicFilter
       _searchScope.value = nextState.searchScope
     },
     { flush: 'sync' },
   )
 
   watch(
-    [keyword, activeMode, chatTypeFilter, searchScope, hasCurrentChatScope],
-    ([nextKeyword, nextActiveMode, nextChatTypeFilter, nextSearchScope, nextHasCurrentChatScope]) => {
+    [keyword, activeMode, chatTypeFilter, topicFilter, searchScope, hasCurrentChatScope],
+    ([nextKeyword, nextActiveMode, nextChatTypeFilter, nextTopicFilter, nextSearchScope, nextHasCurrentChatScope]) => {
       searchDialogStateCache.set(cacheKey.value, {
         keyword: nextKeyword,
         activeMode: nextActiveMode,
         chatTypeFilter: nextChatTypeFilter,
         searchScope: nextHasCurrentChatScope ? nextSearchScope : 'all',
+        topicFilter: nextHasCurrentChatScope ? nextTopicFilter : 'all',
       })
     },
     { immediate: true, flush: 'sync' },
@@ -81,6 +87,7 @@ export function useSearchDialogState(cacheKey: Ref<string>, hasCurrentChatScope:
     chatTypeFilter,
     keyword,
     searchScope,
+    topicFilter,
   }
 }
 

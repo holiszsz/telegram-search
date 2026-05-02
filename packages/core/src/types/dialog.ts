@@ -22,6 +22,7 @@ export interface CoreDialog {
   name: string
   type: DialogType
   isContact?: boolean
+  isForum?: boolean
   unreadCount?: number
   messageCount?: number
   lastMessageFromName?: string

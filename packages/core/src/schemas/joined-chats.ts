@@ -1,6 +1,6 @@
 // https://github.com/moeru-ai/airi/blob/main/services/telegram-bot/src/db/schema.ts
 
-import { bigint, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
+import { bigint, boolean, pgTable, text, uniqueIndex, uuid } from 'drizzle-orm/pg-core'
 
 export type JoinedChatType = 'user' | 'bot' | 'channel' | 'group' | 'supergroup'
 
@@ -11,6 +11,7 @@ export const joinedChatsTable = pgTable('joined_chats', () => {
     chat_id: text().notNull().default('').unique(),
     chat_name: text().notNull().default(''),
     chat_type: text().notNull().default('user').$type<JoinedChatType>(),
+    is_forum: boolean().notNull().default(false),
     chat_username: text(), // Public username for channels/supergroups (nullable)
     last_message_from_name: text(),
     last_message: text(),

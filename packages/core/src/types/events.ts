@@ -6,6 +6,7 @@ import type { AccountSettings } from './account-settings'
 import type { CoreChatFolder, CoreDialog, DialogType } from './dialog'
 import type { CoreMessage } from './message'
 import type { CoreTask, CoreTaskData } from './task'
+import type { CoreChatTopic } from './topic'
 
 export enum CoreEventType {
   CoreCleanup = 'core:cleanup',
@@ -44,12 +45,15 @@ export enum CoreEventType {
   MessageProcessed = 'message:processed',
   MessageUpdated = 'message:updated',
   MessageDeleted = 'message:deleted',
+  ChatResyncRequest = 'chat:resync:request',
 
   DialogFetch = 'dialog:fetch',
   DialogFoldersFetch = 'dialog:folders:fetch',
+  DialogTopicsFetch = 'dialog:topics:fetch',
   DialogAvatarFetch = 'dialog:avatar:fetch',
   DialogData = 'dialog:data',
   DialogFoldersData = 'dialog:folders:data',
+  DialogTopicsData = 'dialog:topics:data',
   DialogAvatarData = 'dialog:avatar:data',
   DialogNote = 'dialog:note',
 
@@ -175,6 +179,7 @@ export interface MessageEventToCore {
   [CoreEventType.MessageFetchSummary]: (data: FetchSummaryMessageOpts) => void
   [CoreEventType.MessageSend]: (data: { chatId: string, content: string }) => void
   [CoreEventType.MessageRead]: (data: { chatId: string }) => void
+  [CoreEventType.ChatResyncRequest]: (data: { chatId: string, since?: number }) => void
 }
 
 export interface FetchUnreadMessageOpts {
@@ -229,6 +234,7 @@ export interface FetchMessageOpts {
 export interface DialogEventToCore {
   [CoreEventType.DialogFetch]: () => void
   [CoreEventType.DialogFoldersFetch]: () => void
+  [CoreEventType.DialogTopicsFetch]: (data: { chatId: string }) => void
   /**
    * Request fetching a single dialog's avatar immediately.
    * Used by frontend to prioritize avatars within viewport.
@@ -239,6 +245,7 @@ export interface DialogEventToCore {
 export interface DialogEventFromCore {
   [CoreEventType.DialogData]: (data: { dialogs: CoreDialog[], pinnedDialogIds?: number[] }) => void
   [CoreEventType.DialogFoldersData]: (data: { folders: CoreChatFolder[] }) => void
+  [CoreEventType.DialogTopicsData]: (data: { chatId: string, topics: CoreChatTopic[] }) => void
   /**
    * Emit avatar bytes for a single dialog. Frontend should convert bytes to blobUrl
    * and attach it to the corresponding chat. This event is incremental and small-sized.
@@ -307,7 +314,7 @@ export type CoreEntity = CoreUserEntity | CoreChatEntity | CoreChannelEntity
 // ============================================================================
 
 export interface StorageEventToCore {
-  [CoreEventType.StorageFetchMessages]: (data: { chatId: string, pagination: CorePagination }) => void
+  [CoreEventType.StorageFetchMessages]: (data: { chatId: string, pagination: CorePagination, topicId?: string }) => void
   [CoreEventType.StorageRecordMessages]: (data: { messages: CoreMessage[] }) => void
 
   [CoreEventType.StorageFetchDialogs]: (data: { accountId: string }) => void
@@ -340,6 +347,7 @@ export interface StorageEventFromCore {
 export interface CoreMessageSearchParams {
   requestId?: string
   chatId?: string
+  topicId?: string
   content: string
 
   useVector: boolean
@@ -374,6 +382,7 @@ export type CoreRetrievalMessages = CoreMessage & {
   combinedScore?: number
   chatName?: string
   inChatType?: DialogType
+  topicId?: string
 }
 
 export interface CoreRetrievalPhoto {
@@ -393,6 +402,7 @@ export interface CoreRetrievalPhoto {
 export interface StorageMessageContextParams {
   chatId: string
   messageId: string
+  topicId?: string
   before?: number
   after?: number
 }

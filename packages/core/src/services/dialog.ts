@@ -6,12 +6,13 @@ import type { CoreContext } from '../context'
 import type { UserModels } from '../models/users'
 import type { DBSelectUser } from '../models/utils/types'
 import type { CoreChatFolder, CoreDialog } from '../types/dialog'
+import type { CoreChatTopic } from '../types/topic'
 
 import bigInt from 'big-integer'
 
 import { circularObject } from '@tg-search/common'
 import { withSpan } from '@tg-search/observability'
-import { Ok } from '@unbird/result'
+import { Err, Ok } from '@unbird/result'
 import { Api } from 'telegram'
 
 import { useAvatarHelper } from '../message-resolvers/avatar-resolver'
@@ -230,6 +231,7 @@ export function createDialogService(ctx: CoreContext, logger: Logger, userModels
           pinned,
           folderIds: [],
           accessHash: result.accessHash,
+          isForum: result.isForum,
         })
       }
 
@@ -243,6 +245,83 @@ export function createDialogService(ctx: CoreContext, logger: Logger, userModels
     return withSpan('core:dialog:service:fetchSingleDialogAvatar', async () => {
       // Do not pass long-lived entity overrides; rely on helper's LRU/TTL or fresh resolution
       await avatarHelper.fetchDialogAvatar(chatId)
+    })
+  }
+
+  async function fetchTopics(chatId: string, accessHash: string): Promise<Result<CoreChatTopic[]>> {
+    return withSpan('core:dialog:service:fetchTopics', async () => {
+      try {
+        const limit = 100
+        const channel = new Api.InputChannel({
+          channelId: bigInt(chatId),
+          accessHash: bigInt(accessHash),
+        })
+        const topics: CoreChatTopic[] = []
+        let offsetDate = 0
+        let offsetId = 0
+        let offsetTopic = 0
+        let hasMore = true
+
+        while (hasMore) {
+          const result = await ctx.getClient().invoke(new Api.channels.GetForumTopics({
+            channel,
+            limit,
+            offsetDate,
+            offsetId,
+            offsetTopic,
+            q: '',
+          })) as unknown as { topics?: unknown[] }
+
+          const rawTopics = result.topics ?? []
+          for (const rawTopic of rawTopics) {
+            if (!(rawTopic instanceof Api.ForumTopic)) {
+              continue
+            }
+
+            const topic = rawTopic as Api.ForumTopic & {
+              iconColor?: number
+              iconEmojiId?: { toString: () => string }
+              topMessage?: number
+              readInboxMaxId?: number
+              readOutboxMaxId?: number
+              unreadCount?: number
+            }
+
+            topics.push({
+              chatId,
+              topicId: topic.id.toString(),
+              title: topic.title,
+              iconColor: topic.iconColor,
+              iconEmojiId: topic.iconEmojiId?.toString(),
+              topMessageId: topic.topMessage?.toString(),
+              unreadCount: topic.unreadCount,
+              lastReadInboxMsgId: topic.readInboxMaxId?.toString(),
+              lastReadOutboxMsgId: topic.readOutboxMaxId?.toString(),
+              lastMessageDate: topic.date,
+              pinned: topic.pinned,
+              closed: topic.closed,
+              hidden: topic.hidden,
+            })
+          }
+
+          hasMore = rawTopics.length >= limit
+          const lastTopic = rawTopics.findLast((topic): topic is Api.ForumTopic => topic instanceof Api.ForumTopic)
+          if (!hasMore || !lastTopic) {
+            break
+          }
+
+          offsetDate = lastTopic.date
+          offsetId = lastTopic.topMessage
+          offsetTopic = lastTopic.id
+        }
+
+        logger.withFields({ chatId, count: topics.length }).verbose('Fetched forum topics')
+        return Ok(topics)
+      }
+      catch (error) {
+        logger.withFields({ chatId }).withError(error).warn('Failed to fetch forum topics')
+        return Err(error instanceof Error ? error : new Error(String(error)))
+      }
     })
   }
 
@@ -264,6 +343,7 @@ export function createDialogService(ctx: CoreContext, logger: Logger, userModels
 
   return {
     fetchDialogs,
+    fetchTopics,
     fetchPinnedDialogIds,
     fetchContacts,
     fetchChatFolders,

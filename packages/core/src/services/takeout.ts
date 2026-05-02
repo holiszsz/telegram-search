@@ -567,6 +567,27 @@ export function createTakeoutService(
     return withSpan('takeout:run', () => runTakeoutInner(params), { chatCount: params.chatIds.length })
   }
 
+  async function runChatResync(params: { chatId: string, since?: number }) {
+    const accountId = ctx.getCurrentAccountId()
+    const hasAccess = (await chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, params.chatId)).expect('Failed to check chat access')
+    if (!hasAccess) {
+      ctx.withError('Unauthorized chat access', 'Account does not have access to requested chat resync')
+      return
+    }
+
+    await runTakeout({
+      chatIds: [params.chatId],
+      increase: false,
+      syncOptions: {
+        startTime: params.since,
+        syncMedia: false,
+        skipMedia: true,
+        skipEmbedding: true,
+        skipJieba: true,
+      },
+    })
+  }
+
   async function runTakeoutInner(params: {
     chatIds: string[]
     increase?: boolean
@@ -761,6 +782,7 @@ export function createTakeoutService(
     takeoutMessages,
     getTotalMessageCount,
     runTakeout,
+    runChatResync,
     abortTask,
     fetchChatSyncStats,
   }

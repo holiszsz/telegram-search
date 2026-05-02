@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { CoreMessage } from '@tg-search/core/types'
 
-import { formatMessageTimestamp } from '@tg-search/client'
+import { formatMessageTimestamp, useChatTopicsStore } from '@tg-search/client'
 import { useClipboard } from '@vueuse/core'
 import { onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
@@ -23,6 +23,7 @@ const emit = defineEmits<{
 }>()
 
 const router = useRouter()
+const chatTopicsStore = useChatTopicsStore()
 const hoveredMessage = ref<CoreMessage | null>(null)
 const listRef = ref<HTMLElement | null>(null)
 const { copy } = useClipboard()
@@ -44,8 +45,17 @@ function navigateToMessage(message: CoreMessage) {
     query: {
       messageId: message.platformMessageId,
       messageUuid: message.uuid,
+      ...(message.topicId ? { topic: message.topicId } : {}),
     },
   })
+}
+
+function getTopicTitle(message: CoreMessage) {
+  if (!message.topicId) {
+    return undefined
+  }
+
+  return chatTopicsStore.getTopic(message.chatId, message.topicId)?.title ?? message.topicId
 }
 
 function onScroll() {
@@ -101,6 +111,13 @@ onUnmounted(() => {
         </div>
         <div class="mt-1 whitespace-pre-wrap break-words text-sm text-gray-600 dark:text-gray-400" v-html="highlightKeyword(item.content, props.keyword)" />
         <div class="mt-1 flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
+          <span
+            v-if="getTopicTitle(item)"
+            class="mr-2 max-w-44 inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-primary"
+          >
+            <span class="i-lucide-list-tree h-3 w-3" />
+            <span class="truncate">{{ getTopicTitle(item) }}</span>
+          </span>
           <span class="i-lucide-hash h-3 w-3" />
           <span>{{ item.platformMessageId }}</span>
         </div>

@@ -7,7 +7,7 @@ import { useLogger } from '@guiiai/logg'
 import { CoreEventType } from '@tg-search/core'
 import { useLocalStorage } from '@vueuse/core'
 import { acceptHMRUpdate, defineStore } from 'pinia'
-import { computed, nextTick, ref } from 'vue'
+import { computed, nextTick, ref, toValue } from 'vue'
 
 import { useBridge } from '../composables/useBridge'
 import { MessageWindow } from '../composables/useMessageWindow'
@@ -26,6 +26,7 @@ export const useMessageStore = defineStore('message', () => {
 
   const sessionStore = useSessionStore()
   const currentChatId = ref<string>()
+  const currentTopicId = ref<string>()
   const messageWindow = ref<MessageWindow>()
   const allSenderNames = useLocalStorage<VersionedScopedStorage<Record<string, string>>>('v3/message/sender-names', {})
   const allEditedMessageMarks = useLocalStorage<VersionedScopedStorage<Record<string, number>>>('v3/message/edited-marks', {})
@@ -162,6 +163,7 @@ export const useMessageStore = defineStore('message', () => {
   function reset() {
     logger.log('Resetting message store for account switch')
     currentChatId.value = undefined
+    currentTopicId.value = undefined
     messageWindow.value?.clear()
     messageWindow.value = undefined
     pendingEditHints.value = {}
@@ -313,19 +315,22 @@ export const useMessageStore = defineStore('message', () => {
     }
   }
 
-  function replaceMessages(messages: CoreMessage[], options?: { chatId?: string, limit?: number }) {
+  function replaceMessages(messages: CoreMessage[], options?: { chatId?: string, limit?: number, topicId?: string }) {
     const normalizedMessages = normalizeSenderNames(messages)
     const previousChatId = currentChatId.value
     const nextChatId = options?.chatId ?? previousChatId
+    const nextTopicId = options?.topicId
     const fallbackSize = Math.max(normalizedMessages.length, 50)
     const desiredSize = options?.limit ?? Math.max(messageWindow.value?.maxSize ?? 0, fallbackSize)
 
     const shouldResetWindow = !messageWindow.value
       || messageWindow.value.maxSize < desiredSize
       || (nextChatId && previousChatId !== nextChatId)
+      || currentTopicId.value !== nextTopicId
 
     if (nextChatId)
       currentChatId.value = nextChatId
+    currentTopicId.value = nextTopicId
 
     if (shouldResetWindow)
       messageWindow.value = new MessageWindow(desiredSize)
@@ -342,22 +347,24 @@ export const useMessageStore = defineStore('message', () => {
   async function loadMessageContext(
     chatId: string,
     messageId: string,
-    options: { before?: number, after?: number, limit?: number } = {},
+    options: { before?: number, after?: number, limit?: number, topicId?: string } = {},
   ) {
     const before = options.before ?? 20
     const after = options.after ?? 20
     const limit = options.limit ?? Math.max(messageWindow.value?.maxSize ?? 0, before + after + 1, 50)
+    const topicId = options.topicId
 
     bridge.sendEvent(CoreEventType.StorageFetchMessageContext, {
       chatId,
       messageId,
+      topicId,
       before,
       after,
     })
 
     const { messages } = await waitForEventWithTimeout(bridge.waitForEvent(CoreEventType.StorageMessagesContext))
 
-    replaceMessages(messages, { chatId, limit })
+    replaceMessages(messages, { chatId, limit, topicId })
 
     return messages
   }
@@ -369,6 +376,7 @@ export const useMessageStore = defineStore('message', () => {
 
     const filteredMessages = normalizeSenderNames(messages)
       .filter(msg => msg.chatId === currentChatId.value)
+      .filter(msg => !currentTopicId.value || msg.topicId === currentTopicId.value)
       .map((message) => {
         const existingMessage = messageWindow.value?.get(message.platformMessageId)
         const hasEditHint = isMessageMarkedEdited(message)
@@ -432,10 +440,12 @@ export const useMessageStore = defineStore('message', () => {
     )
   }
 
-  function useFetchMessages(chatId: string, limit: number) {
+  function useFetchMessages(chatId: string, limit: number, topicId?: string | (() => string | undefined)) {
+    const initialTopicId = toValue(topicId)
     // Only initialize if chatId changes
-    if (currentChatId.value !== chatId) {
+    if (currentChatId.value !== chatId || currentTopicId.value !== initialTopicId) {
       currentChatId.value = chatId
+      currentTopicId.value = initialTopicId
       messageWindow.value?.clear()
       messageWindow.value = new MessageWindow(limit)
     }
@@ -449,24 +459,42 @@ export const useMessageStore = defineStore('message', () => {
       direction: 'older' | 'newer' = 'older',
     ) {
       isLoading.value = true
+      const activeTopicId = toValue(topicId)
+      if (currentChatId.value !== chatId || currentTopicId.value !== activeTopicId) {
+        currentChatId.value = chatId
+        currentTopicId.value = activeTopicId
+        messageWindow.value?.clear()
+        messageWindow.value = new MessageWindow(limit)
+      }
 
       logger.log(`Fetching messages for chat ${chatId}`, pagination.offset)
 
       // Then, fetch the messages from server & update the cache
-      switch (direction) {
-        case 'older':
-          bridge.sendEvent(CoreEventType.MessageFetch, { chatId, pagination })
-          break
-        case 'newer':
-          bridge.sendEvent(CoreEventType.MessageFetch, {
-            chatId,
-            pagination: {
-              offset: 0,
-              limit: pagination.limit,
-            },
-            minId: pagination.minId,
-          })
-          break
+      if (activeTopicId) {
+        bridge.sendEvent(CoreEventType.StorageFetchMessages, {
+          chatId,
+          topicId: activeTopicId,
+          pagination: direction === 'newer'
+            ? { offset: 0, limit: pagination.limit }
+            : pagination,
+        })
+      }
+      else {
+        switch (direction) {
+          case 'older':
+            bridge.sendEvent(CoreEventType.MessageFetch, { chatId, pagination })
+            break
+          case 'newer':
+            bridge.sendEvent(CoreEventType.MessageFetch, {
+              chatId,
+              pagination: {
+                offset: 0,
+                limit: pagination.limit,
+              },
+              minId: pagination.minId,
+            })
+            break
+        }
       }
 
       try {

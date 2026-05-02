@@ -19,6 +19,7 @@ interface UseSearchDialogResultsOptions {
   keyword: Ref<string>
   keywordDebounced: Ref<string>
   scopedChatId: Ref<string | undefined>
+  topicFilter?: Ref<string>
 }
 
 export function useSearchDialogResults({
@@ -26,6 +27,7 @@ export function useSearchDialogResults({
   keyword,
   keywordDebounced,
   scopedChatId,
+  topicFilter,
 }: UseSearchDialogResultsOptions) {
   const bridge = useBridge()
   const logger = useLogger('composables:search-dialog')
@@ -59,7 +61,12 @@ export function useSearchDialogResults({
   const showMessagesPanel = computed(() => activeMode.value === 'all' || activeMode.value === 'messages')
   const showPhotosPanel = computed(() => activeMode.value === 'all' || activeMode.value === 'photos')
 
-  watch([settledKeyword, activeMode, scopedChatId], ([newKeyword, mode]) => {
+  const selectedTopicId = computed(() => {
+    const value = topicFilter?.value ?? 'all'
+    return value === 'all' ? undefined : value
+  })
+
+  watch([settledKeyword, activeMode, scopedChatId, selectedTopicId], ([newKeyword, mode]) => {
     // Bump sequence counters first so any in-flight load-more requests
     // become stale, then forcibly clear their loading flags so they can't
     // block future pagination.
@@ -91,6 +98,7 @@ export function useSearchDialogResults({
     bridge.sendEvent(CoreEventType.StorageSearchMessages, {
       requestId: messageRequestId,
       chatId: scopedChatId.value,
+      topicId: selectedTopicId.value,
       content: newKeyword,
       useVector: true,
       pagination: {
@@ -146,6 +154,7 @@ export function useSearchDialogResults({
     bridge.sendEvent(CoreEventType.StorageSearchMessages, {
       requestId,
       chatId: scopedChatId.value,
+      topicId: selectedTopicId.value,
       content: currentKeyword,
       useVector: true,
       pagination: {

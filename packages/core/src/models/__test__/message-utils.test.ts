@@ -22,6 +22,7 @@ function buildDBSelectMessage(overrides: Partial<DBSelectMessage> = {}): DBSelec
     owner_account_id: overrides.owner_account_id ?? null,
     in_chat_id: overrides.in_chat_id ?? 'chat-1',
     in_chat_type: overrides.in_chat_type ?? 'user',
+    topic_id: overrides.topic_id ?? '',
     content: overrides.content ?? 'content',
     is_reply: overrides.is_reply ?? false,
     reply_to_name: overrides.reply_to_name ?? '',

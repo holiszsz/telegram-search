@@ -118,6 +118,7 @@ async function recordMessages(
 
         // Platform timestamp: always update
         platform_timestamp: sql`excluded.platform_timestamp`,
+        topic_id: sql`excluded.topic_id`,
         updated_at: Date.now(),
       },
     })
@@ -175,8 +176,21 @@ async function fetchMessages(
   accountId: string,
   chatId: string,
   pagination: CorePagination,
+  topicId?: string,
 ): PromiseResult<{ dbMessagesResults: DBSelectMessage[], coreMessages: CoreMessage[] }> {
   return withResult(async () => {
+    const conditions = [
+      eq(chatMessagesTable.in_chat_id, chatId),
+      notDeletedCondition(),
+      topicId ? eq(chatMessagesTable.topic_id, topicId) : undefined,
+      // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).
+      sql`(
+        ${joinedChatsTable.chat_type} != 'user'
+        OR ${chatMessagesTable.owner_account_id} = ${accountId}
+        OR ${chatMessagesTable.owner_account_id} IS NULL
+      )`,
+    ].filter(Boolean)
+
     const dbMessagesResults = await db
       .select({
         chat_messages: chatMessagesTable,
@@ -184,16 +198,7 @@ async function fetchMessages(
       })
       .from(chatMessagesTable)
       .innerJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
-      .where(and(
-        eq(chatMessagesTable.in_chat_id, chatId),
-        notDeletedCondition(),
-        // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).
-        sql`(
-        ${joinedChatsTable.chat_type} != 'user'
-        OR ${chatMessagesTable.owner_account_id} = ${accountId}
-        OR ${chatMessagesTable.owner_account_id} IS NULL
-      )`,
-      ))
+      .where(and(...conditions))
       .orderBy(desc(chatMessagesTable.created_at))
       .limit(pagination.limit)
       .offset(pagination.offset)
@@ -214,9 +219,10 @@ async function fetchMessagesWithPhotos(
   accountId: string,
   chatId: string,
   pagination: CorePagination,
+  topicId?: string,
 ): PromiseResult<CoreMessage[]> {
   return withResult(async () => {
-    const { dbMessagesResults, coreMessages } = (await fetchMessages(db, accountId, chatId, pagination)).expect('Failed to fetch messages')
+    const { dbMessagesResults, coreMessages } = (await fetchMessages(db, accountId, chatId, pagination, topicId)).expect('Failed to fetch messages')
 
     // Fetch photos for all messages in batch
     const messageIds = dbMessagesResults.map(msg => msg.id)
@@ -244,9 +250,20 @@ async function fetchMessageContextWithPhotos(
   db: CoreDB,
   photoModel: PhotoModels,
   accountId: string,
-  { chatId, messageId, before, after }: Required<StorageMessageContextParams>,
+  { chatId, messageId, topicId, before = 20, after = 20 }: StorageMessageContextParams,
 ): PromiseResult<CoreMessage[]> {
   return withResult(async () => {
+    const contextConditions = [
+      eq(chatMessagesTable.in_chat_id, chatId),
+      topicId ? eq(chatMessagesTable.topic_id, topicId) : undefined,
+      notDeletedCondition(),
+      sql`(
+        ${joinedChatsTable.chat_type} != 'user'
+        OR ${chatMessagesTable.owner_account_id} = ${accountId}
+        OR ${chatMessagesTable.owner_account_id} IS NULL
+      )`,
+    ].filter(Boolean)
+
     const targetMessages = await db
       .select({
         chat_messages: chatMessagesTable,
@@ -255,14 +272,8 @@ async function fetchMessageContextWithPhotos(
       .from(chatMessagesTable)
       .innerJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
       .where(and(
-        eq(chatMessagesTable.in_chat_id, chatId),
+        ...contextConditions,
         eq(chatMessagesTable.platform_message_id, messageId),
-        notDeletedCondition(),
-        sql`(
-        ${joinedChatsTable.chat_type} != 'user'
-        OR ${chatMessagesTable.owner_account_id} = ${accountId}
-        OR ${chatMessagesTable.owner_account_id} IS NULL
-      )`,
       ))
       .limit(1)
 
@@ -279,14 +290,8 @@ async function fetchMessageContextWithPhotos(
       .from(chatMessagesTable)
       .innerJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
       .where(and(
-        eq(chatMessagesTable.in_chat_id, chatId),
+        ...contextConditions,
         lt(chatMessagesTable.platform_timestamp, targetMessage.platform_timestamp),
-        notDeletedCondition(),
-        sql`(
-        ${joinedChatsTable.chat_type} != 'user'
-        OR ${chatMessagesTable.owner_account_id} = ${accountId}
-        OR ${chatMessagesTable.owner_account_id} IS NULL
-      )`,
       ))
       .orderBy(desc(chatMessagesTable.platform_timestamp))
       .limit(before)
@@ -299,14 +304,8 @@ async function fetchMessageContextWithPhotos(
       .from(chatMessagesTable)
       .innerJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
       .where(and(
-        eq(chatMessagesTable.in_chat_id, chatId),
+        ...contextConditions,
         gt(chatMessagesTable.platform_timestamp, targetMessage.platform_timestamp),
-        notDeletedCondition(),
-        sql`(
-        ${joinedChatsTable.chat_type} != 'user'
-        OR ${chatMessagesTable.owner_account_id} = ${accountId}
-        OR ${chatMessagesTable.owner_account_id} IS NULL
-      )`,
       ))
       .orderBy(asc(chatMessagesTable.platform_timestamp))
       .limit(after)
@@ -456,6 +455,7 @@ async function retrieveMessages(
     fromUserId?: string
     timeRange?: { start?: number, end?: number }
     chatIds?: string[]
+    topicId?: string
   },
 ): PromiseResult<DBRetrievalMessages[]> {
   logger = logger.withContext('models:chat-message:retrieveMessages')

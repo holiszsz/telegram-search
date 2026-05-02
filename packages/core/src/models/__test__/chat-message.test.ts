@@ -36,6 +36,7 @@ function buildCoreMessage(overrides: Partial<CoreMessage> = {}): CoreMessage {
     fromId: overrides.fromId ?? 'from-1',
     fromName: overrides.fromName ?? 'From 1',
     content: overrides.content ?? 'content',
+    topicId: overrides.topicId,
     reply: overrides.reply ?? { isReply: false, replyToId: undefined, replyToName: undefined },
     forward: overrides.forward ?? { isForward: false },
     platformTimestamp: overrides.platformTimestamp ?? Date.now(),
@@ -103,6 +104,50 @@ describe('models/chat-message', () => {
 
     expect(groupRow.in_chat_type).toBe('group')
     expect(groupRow.owner_account_id).toBeNull()
+  })
+
+  it('recordMessages updates topic_id when a resync re-ingests the same Telegram message', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({
+        uuid: uuidv4(),
+        platformMessageId: '10',
+        chatId: chat.chat_id,
+        content: 'before topic extraction',
+      }),
+    ])
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({
+        uuid: uuidv4(),
+        platformMessageId: '10',
+        chatId: chat.chat_id,
+        topicId: '777',
+        content: 'after topic extraction',
+      }),
+    ])
+
+    const rows = await db.select().from(chatMessagesTable)
+
+    // Resync must update the recoverable topic metadata in place instead of
+    // duplicating the same Telegram message under a different topic_id.
+    expect(rows).toHaveLength(1)
+    expect(rows[0].topic_id).toBe('777')
+    expect(rows[0].content).toBe('after topic extraction')
   })
 
   it('fetchMessages enforces ACL and returns messages ordered by created_at desc', async () => {
@@ -186,6 +231,33 @@ describe('models/chat-message', () => {
 
     // Ordered by created_at desc => message 3 then message 1
     expect(dbMessagesResults.map(m => m.platform_message_id)).toEqual(['3', '1'])
+  })
+
+  it('fetchMessages filters by topicId when provided', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id, topicId: 'alpha' }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, topicId: 'beta' }),
+    ])
+
+    const result = await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 }, 'alpha')
+    const { dbMessagesResults } = result.unwrap()
+
+    expect(dbMessagesResults.map(message => message.platform_message_id)).toEqual(['1'])
   })
 
   it('fetchMessagesWithPhotos attaches media for each message', async () => {
@@ -311,5 +383,43 @@ describe('models/chat-message', () => {
       expect(message.media?.length).toBe(1)
       expect(message.media?.[0].type).toBe('photo')
     })
+  })
+
+  it('fetchMessageContextWithPhotos filters surrounding messages by topicId', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-ctx',
+      chat_name: 'Forum Context Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 2000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '3', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 3000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '4', chatId: chat.chat_id, topicId: 'beta', platformTimestamp: 1500 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '5', chatId: chat.chat_id, topicId: 'beta', platformTimestamp: 2500 }),
+    ])
+
+    const context = (await chatMessageModels.fetchMessageContextWithPhotos(db, photoModels, account.id, {
+      chatId: chat.chat_id,
+      messageId: '2',
+      topicId: 'alpha',
+      before: 2,
+      after: 2,
+    })).unwrap()
+
+    // Topic-filtered search context used to include chronologically adjacent
+    // messages from other topics.
+    expect(context.map(m => m.platformMessageId)).toEqual(['1', '2', '3'])
+    expect(context.every(message => message.topicId === 'alpha')).toBe(true)
   })
 })

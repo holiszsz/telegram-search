@@ -5,6 +5,7 @@ import type { BotScheduledTaskModels } from './bot-scheduled-tasks'
 import type { ChatFolderModels } from './chat-folders'
 import type { ChatMessageModels } from './chat-message'
 import type { ChatMessageStatsModels } from './chat-message-stats'
+import type { ChatTopicModels } from './chat-topic'
 import type { ChatModels } from './chats'
 import type { PhotoModels } from './photos'
 import type { StickerModels } from './stickers'
@@ -17,6 +18,7 @@ import { botScheduledTaskModels } from './bot-scheduled-tasks'
 import { chatFolderModels } from './chat-folders'
 import { chatMessageModels } from './chat-message'
 import { chatMessageStatsModels } from './chat-message-stats'
+import { chatTopicModels } from './chat-topic'
 import { chatModels } from './chats'
 import { photoModels } from './photos'
 import { stickerModels } from './stickers'
@@ -26,6 +28,7 @@ export const models = {
   chatMessageModels,
   chatMessageStatsModels,
   chatModels,
+  chatTopicModels,
   chatFolderModels,
   photoModels,
   stickerModels,
@@ -47,6 +50,7 @@ export type {
   ChatMessageModels,
   ChatMessageStatsModels,
   ChatModels,
+  ChatTopicModels,
   PhotoModels,
   StickerModels,
   UserModels,

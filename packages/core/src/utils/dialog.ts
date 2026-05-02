@@ -23,6 +23,7 @@ export function resolveDialog(dialog: Dialog): Result<{
   avatarUpdatedAt?: Date
   accessHash?: string
   username?: string
+  isForum?: boolean
 }> {
   const { isGroup, isChannel, isUser } = dialog
   const id = dialog.entity?.id
@@ -42,6 +43,7 @@ export function resolveDialog(dialog: Dialog): Result<{
   let isBot = false
   let isContact = false
   let isMegagroup = false
+  let isForum = false
 
   if (dialog.entity instanceof Api.User) {
     if (dialog.entity.photo && 'photoId' in dialog.entity.photo) {
@@ -57,6 +59,7 @@ export function resolveDialog(dialog: Dialog): Result<{
     }
     accessHash = dialog.entity.accessHash?.toString()
     isMegagroup = dialog.entity.megagroup === true
+    isForum = dialog.entity.forum === true
     username = dialog.entity.username ?? undefined
   }
   else if (dialog.entity instanceof Api.Chat && dialog.entity.photo && 'photoId' in dialog.entity.photo) {
@@ -89,6 +92,7 @@ export function resolveDialog(dialog: Dialog): Result<{
     avatarUpdatedAt: undefined,
     accessHash,
     username,
+    isForum,
   })
 }
 

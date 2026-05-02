@@ -3,6 +3,7 @@ import type { DialogType } from '@tg-search/core/types'
 export type SearchMode = 'all' | 'messages' | 'photos' | 'commands'
 export type SearchScope = 'current' | 'all'
 export type SearchDialogChatTypeFilter = 'all' | DialogType
+export type SearchDialogTopicFilter = 'all' | string
 
 export interface SearchModeMeta {
   key: SearchMode

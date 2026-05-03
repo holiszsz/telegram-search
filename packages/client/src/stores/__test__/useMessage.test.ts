@@ -35,6 +35,7 @@ function createTestMessage(
     fromName: overrides.fromName ?? 'User',
     content: overrides.content,
     media: overrides.media,
+    topicId: overrides.topicId,
     reply: overrides.reply ?? { isReply: false },
     forward: overrides.forward ?? { isForward: false },
     platformTimestamp: overrides.platformTimestamp,
@@ -126,6 +127,18 @@ describe('useMessageStore', () => {
     expect(store.sortedMessageIds).toContain('3')
   })
 
+  it('pushes only General messages when the active topic id is empty', async () => {
+    const store = useMessageStore()
+    store.replaceMessages([], { chatId: 'chat-1', topicId: '' })
+
+    await store.pushMessages([
+      createTestMessage({ platformMessageId: '1', chatId: 'chat-1', content: 'general', platformTimestamp: 1000 }),
+      createTestMessage({ platformMessageId: '2', chatId: 'chat-1', content: 'topic', platformTimestamp: 2000, topicId: 'topic-1' }),
+    ])
+
+    expect(store.sortedMessageIds).toEqual(['1'])
+  })
+
   it('fetches messages with pagination', async () => {
     const store = useMessageStore()
     const { fetchMessages, isLoading } = store.useFetchMessages('chat-1', 50)
@@ -171,6 +184,31 @@ describe('useMessageStore', () => {
       minId: undefined,
       maxId: undefined,
     })
+
+    // @ts-expect-error intentionally resolve for test
+    resolvePromise({ messages: [] })
+    await fetchPromise
+  })
+
+  it('fetches General messages from storage without using Telegram topic fetch', async () => {
+    const store = useMessageStore()
+    const { fetchMessages } = store.useFetchMessages('chat-1', 50, () => '')
+
+    let resolvePromise: (value: any) => void
+    // eslint-disable-next-line style/max-statements-per-line
+    const promise = new Promise((resolve) => { resolvePromise = resolve })
+    waitForEventMock.mockReturnValue(promise)
+
+    const pagination: CorePagination & { minId?: number } = { offset: 0, limit: 20 }
+    const fetchPromise = fetchMessages(pagination, 'older')
+
+    expect(sendEventMock).toHaveBeenCalledWith(CoreEventType.StorageFetchMessages, {
+      chatId: 'chat-1',
+      topicId: '',
+      pagination,
+    })
+    expect(sendEventMock).not.toHaveBeenCalledWith(CoreEventType.MessageFetch, expect.anything())
+    expect(sendEventMock).not.toHaveBeenCalledWith(CoreEventType.MessageFetchTopic, expect.anything())
 
     // @ts-expect-error intentionally resolve for test
     resolvePromise({ messages: [] })

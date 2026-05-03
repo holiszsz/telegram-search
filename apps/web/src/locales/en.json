@@ -63,6 +63,7 @@
     "forceLoadNewer": "Force load newer messages",
     "forceLoadOlder": "Force load older messages",
     "messageSent": "Message sent",
+    "generalTopic": "General",
     "resyncTopics": "Resync topics",
     "resyncTopicsStarted": "Topic resync started",
     "summarize": "Summarize",
@@ -93,6 +94,7 @@
     "aiContextCount": "{count} chats added",
     "selectionModeCount": "{count} chats selected for AI",
     "selectionModeEntered": "AI selection mode is on",
+    "generalTopic": "General",
     "topics": "Topics",
     "resyncTopics": "Resync topics"
   },
@@ -188,6 +190,7 @@
     "chatTypeChannel": "Channels",
     "topic": "Topic",
     "topicAll": "All topics",
+    "topicGeneral": "General",
     "quickActions": "Quick actions",
     "commandOpenAI": "Open AI Chat",
     "commandOpenAIDesc": "Start a global AI conversation with your synced data",

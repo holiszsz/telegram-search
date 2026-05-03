@@ -23,6 +23,7 @@ import {
 } from '../../components/ui/ContextMenu'
 import { Input } from '../../components/ui/Input'
 import { getChatLink } from '../../utils/telegram-links'
+import { decodeTopicQuery, GENERAL_TOPIC_DB_VALUE } from '../../utils/topic-route'
 
 const { t } = useI18n()
 
@@ -38,8 +39,9 @@ const { activeSessionId } = storeToRefs(useSessionStore())
 
 const { sortedMessageIds, messageWindow, sortedMessageArray } = storeToRefs(messageStore)
 const currentChat = computed<CoreDialog | undefined>(() => chatStore.getChat(id.toString()))
-const topicId = computed(() => typeof route.query.topic === 'string' ? route.query.topic : undefined)
+const topicId = computed(() => decodeTopicQuery(route.query.topic))
 const currentTopic = computed(() => chatTopicsStore.getTopic(id.toString(), topicId.value))
+const currentTopicTitle = computed(() => topicId.value === GENERAL_TOPIC_DB_VALUE ? t('chat.generalTopic') : currentTopic.value?.title)
 const chatTelegramLink = computed(() => {
   if (!currentChat.value)
     return null
@@ -334,8 +336,8 @@ watch(
             {{ currentChat?.name }}
           </h2>
           <p v-if="currentChat?.id" class="truncate text-xs text-muted-foreground">
-            <template v-if="currentTopic">
-              {{ currentTopic.title }} ·
+            <template v-if="currentTopicTitle">
+              {{ currentTopicTitle }} ·
             </template>
             ID: {{ currentChat?.id }}
           </p>

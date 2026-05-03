@@ -376,7 +376,7 @@ export const useMessageStore = defineStore('message', () => {
 
     const filteredMessages = normalizeSenderNames(messages)
       .filter(msg => msg.chatId === currentChatId.value)
-      .filter(msg => !currentTopicId.value || msg.topicId === currentTopicId.value)
+      .filter(msg => currentTopicId.value === undefined || (msg.topicId ?? '') === currentTopicId.value)
       .map((message) => {
         const existingMessage = messageWindow.value?.get(message.platformMessageId)
         const hasEditHint = isMessageMarkedEdited(message)
@@ -471,7 +471,33 @@ export const useMessageStore = defineStore('message', () => {
       logger.log(`Fetching messages for chat ${chatId}`, pagination.offset)
 
       // Then, fetch the messages from server & update the cache
-      if (activeTopicId) {
+      if (activeTopicId === undefined) {
+        switch (direction) {
+          case 'older':
+            bridge.sendEvent(CoreEventType.MessageFetch, { chatId, pagination })
+            break
+          case 'newer':
+            bridge.sendEvent(CoreEventType.MessageFetch, {
+              chatId,
+              pagination: {
+                offset: 0,
+                limit: pagination.limit,
+              },
+              minId: pagination.minId,
+            })
+            break
+        }
+      }
+      else if (activeTopicId === '') {
+        bridge.sendEvent(CoreEventType.StorageFetchMessages, {
+          chatId,
+          topicId: activeTopicId,
+          pagination: direction === 'newer'
+            ? { offset: 0, limit: pagination.limit }
+            : pagination,
+        })
+      }
+      else {
         const currentMinId = messageWindow.value?.minId
         const maxId = direction === 'older'
           && currentMinId !== undefined
@@ -489,23 +515,6 @@ export const useMessageStore = defineStore('message', () => {
           minId: direction === 'newer' ? pagination.minId : undefined,
           maxId,
         })
-      }
-      else {
-        switch (direction) {
-          case 'older':
-            bridge.sendEvent(CoreEventType.MessageFetch, { chatId, pagination })
-            break
-          case 'newer':
-            bridge.sendEvent(CoreEventType.MessageFetch, {
-              chatId,
-              pagination: {
-                offset: 0,
-                limit: pagination.limit,
-              },
-              minId: pagination.minId,
-            })
-            break
-        }
       }
 
       try {

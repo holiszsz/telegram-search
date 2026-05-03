@@ -5,11 +5,13 @@ import type { CoreMessage } from '../../types/message'
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer } from 'buffer'
 
+import { useLogger } from '@guiiai/logg'
 import { eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { mockDB } from '../../db/mock'
+import { accountJoinedChatsTable } from '../../schemas/account-joined-chats'
 import { accountsTable } from '../../schemas/accounts'
 import { chatMessagesTable } from '../../schemas/chat-messages'
 import { joinedChatsTable } from '../../schemas/joined-chats'
@@ -18,9 +20,16 @@ import { usersTable } from '../../schemas/users'
 import { chatMessageModels } from '../chat-message'
 import { photoModels } from '../photos'
 
+vi.mock('../../utils/jieba', () => ({
+  ensureJieba: vi.fn(async () => ({
+    cut: (content: string) => [content],
+  })),
+}))
+
 async function setupDb() {
   return mockDB({
     accountsTable,
+    accountJoinedChatsTable,
     joinedChatsTable,
     chatMessagesTable,
     photosTable,
@@ -193,6 +202,98 @@ describe('models/chat-message', () => {
     expect(rows).toHaveLength(1)
     expect(rows[0].topic_id).toBe('777')
     expect(rows[0].content).toBe('without topic metadata')
+  })
+
+  it('assignTopicForRootMessages assigns empty root message topics without overwriting existing topics', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '100', chatId: chat.chat_id }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '200', chatId: chat.chat_id, topicId: 'other' }),
+    ])
+
+    const count = (await chatMessageModels.assignTopicForRootMessages(db, chat.chat_id, [
+      { rootMessageId: '100', topicId: 'topic-a' },
+      { rootMessageId: '200', topicId: 'topic-b' },
+    ])).unwrap()
+
+    const rows = await db
+      .select()
+      .from(chatMessagesTable)
+      .orderBy(chatMessagesTable.platform_message_id)
+
+    expect(count).toBe(1)
+    expect(rows.map(row => [row.platform_message_id, row.topic_id])).toEqual([
+      ['100', 'topic-a'],
+      ['200', 'other'],
+    ])
+  })
+
+  it('assignTopicForRootMessages only updates the requested chat', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    await db.insert(joinedChatsTable).values([
+      {
+        platform: 'telegram',
+        chat_id: 'forum-a',
+        chat_name: 'Forum A',
+        chat_type: 'supergroup',
+        is_forum: true,
+      },
+      {
+        platform: 'telegram',
+        chat_id: 'forum-b',
+        chat_name: 'Forum B',
+        chat_type: 'supergroup',
+        is_forum: true,
+      },
+    ])
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '100', chatId: 'forum-a' }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '100', chatId: 'forum-b' }),
+    ])
+
+    const count = (await chatMessageModels.assignTopicForRootMessages(db, 'forum-a', [
+      { rootMessageId: '100', topicId: 'topic-a' },
+    ])).unwrap()
+
+    const rows = await db
+      .select()
+      .from(chatMessagesTable)
+      .orderBy(chatMessagesTable.in_chat_id)
+
+    expect(count).toBe(1)
+    expect(rows.map(row => [row.in_chat_id, row.topic_id])).toEqual([
+      ['forum-a', 'topic-a'],
+      ['forum-b', ''],
+    ])
+  })
+
+  it('assignTopicForRootMessages accepts an empty assignment list', async () => {
+    const db = await setupDb()
+
+    const count = (await chatMessageModels.assignTopicForRootMessages(db, 'forum-a', [])).unwrap()
+
+    expect(count).toBe(0)
   })
 
   it('fetchMessages enforces ACL and returns messages ordered by platform_timestamp desc', async () => {
@@ -369,6 +470,34 @@ describe('models/chat-message', () => {
     expect(dbMessagesResults.map(message => message.platform_message_id)).toEqual(['1'])
   })
 
+  it('fetchMessages treats an empty topicId as the General topic filter', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, topicId: 'alpha' }),
+    ])
+
+    const generalResult = await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 }, '')
+    const allResult = await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 })
+
+    expect(generalResult.unwrap().dbMessagesResults.map(message => message.platform_message_id)).toEqual(['1'])
+    expect(allResult.unwrap().dbMessagesResults.map(message => message.platform_message_id)).toEqual(['2', '1'])
+  })
+
   it('fetchMessagesWithPhotos attaches media for each message', async () => {
     const db = await setupDb()
 
@@ -530,5 +659,178 @@ describe('models/chat-message', () => {
     // messages from other topics.
     expect(context.map(m => m.platformMessageId)).toEqual(['1', '2', '3'])
     expect(context.every(message => message.topicId === 'alpha')).toBe(true)
+  })
+
+  it('fetchMessageContextWithPhotos treats an empty topicId as the General topic filter', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-ctx',
+      chat_name: 'Forum Context Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id, platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, platformTimestamp: 2000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '3', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1500 }),
+    ])
+
+    const context = (await chatMessageModels.fetchMessageContextWithPhotos(db, photoModels, account.id, {
+      chatId: chat.chat_id,
+      messageId: '2',
+      topicId: '',
+      before: 2,
+      after: 2,
+    })).unwrap()
+
+    expect(context.map(m => m.platformMessageId)).toEqual(['1', '2'])
+    expect(context.every(message => message.topicId === undefined)).toBe(true)
+  })
+
+  it('retrieveMessages applies the General topic filter to jieba retrieval', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-search',
+      chat_name: 'Forum Search',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await db.insert(accountJoinedChatsTable).values({
+      account_id: account.id,
+      joined_chat_id: chat.id,
+    })
+
+    await db.insert(chatMessagesTable).values([
+      {
+        platform: 'telegram',
+        platform_message_id: '1',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        content: '苹果 general',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 1000,
+        created_at: 1000,
+        jieba_tokens: ['苹果'],
+      },
+      {
+        platform: 'telegram',
+        platform_message_id: '2',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        topic_id: 'alpha',
+        content: '苹果 topic',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 2000,
+        created_at: 2000,
+        jieba_tokens: ['苹果'],
+      },
+    ])
+
+    const results = (await chatMessageModels.retrieveMessages(
+      db,
+      useLogger('models:chat-message:test'),
+      account.id,
+      768,
+      { text: '苹果' },
+      { limit: 10, offset: 0 },
+      { chatIds: [chat.chat_id], topicId: '' },
+    )).unwrap()
+
+    expect(results.map(message => message.platform_message_id)).toEqual(['1'])
+  })
+
+  it('retrieveMessages applies the General topic filter to vector retrieval', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-vector',
+      chat_name: 'Forum Vector',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await db.insert(accountJoinedChatsTable).values({
+      account_id: account.id,
+      joined_chat_id: chat.id,
+    })
+
+    const vector = [1, ...Array.from({ length: 767 }, () => 0)]
+    await db.insert(chatMessagesTable).values([
+      {
+        platform: 'telegram',
+        platform_message_id: '1',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        content: 'general vector',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 1000,
+        created_at: 1000,
+        content_vector_model: 'test-model',
+        content_vector_768: vector,
+      },
+      {
+        platform: 'telegram',
+        platform_message_id: '2',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        topic_id: 'alpha',
+        content: 'topic vector',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 2000,
+        created_at: 2000,
+        content_vector_model: 'test-model',
+        content_vector_768: vector,
+      },
+    ])
+
+    const results = (await chatMessageModels.retrieveMessages(
+      db,
+      useLogger('models:chat-message:test'),
+      account.id,
+      768,
+      { model: 'test-model', embedding: vector },
+      { limit: 10, offset: 0 },
+      { chatIds: [chat.chat_id], topicId: '' },
+    )).unwrap()
+
+    expect(results.map(message => message.platform_message_id)).toEqual(['1'])
   })
 })

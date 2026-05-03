@@ -208,7 +208,7 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
 
     const chatIds = params.chatIds ?? (params.chatId ? [params.chatId] : undefined)
 
-    if (params.topicId && chatIds?.length !== 1) {
+    if (params.topicId !== undefined && chatIds?.length !== 1) {
       ctx.withError('Invalid topic search', 'Topic search must be scoped to exactly one chat')
       return
     }
@@ -292,6 +292,11 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
         return
       }
 
+      if (params.topicId !== undefined && params.chatIds?.length !== 1) {
+        ctx.withError('Invalid topic photo search', 'Topic photo search must be scoped to exactly one chat')
+        return
+      }
+
       const embeddingSettings = (await ctx.getAccountSettings()).embedding
       const embeddingDimension = embeddingSettings.dimension
       logger.withFields({ embeddingDimension }).verbose('Embedding settings loaded')
@@ -330,6 +335,12 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
           embedding,
           embeddingDimension,
           requestedLimit + 1,
+          undefined,
+          {
+            chatIds: params.chatIds,
+            timeRange: params.timeRange,
+            topicId: params.topicId,
+          },
         )).expect('Failed to search photos by vector')
 
         logger.withFields({ resultsCount: results.length }).verbose('Vector search completed')
@@ -359,6 +370,11 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
           ctx.getDB(),
           params.content,
           requestedLimit + 1,
+          {
+            chatIds: params.chatIds,
+            timeRange: params.timeRange,
+            topicId: params.topicId,
+          },
         )).expect('Failed to search photos by text')
 
         logger.withFields({ resultsCount: results.length }).verbose('Text search completed')

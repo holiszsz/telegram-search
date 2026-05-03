@@ -133,6 +133,43 @@ async function recordMessages(
   return rows
 }
 
+async function assignTopicForRootMessages(
+  db: CoreDB,
+  chatId: string,
+  assignments: { rootMessageId: string, topicId: string }[],
+): PromiseResult<number> {
+  return withResult(async () => {
+    if (assignments.length === 0) {
+      return 0
+    }
+
+    const cases = sql.join(
+      assignments.map(assignment =>
+        sql`WHEN ${chatMessagesTable.platform_message_id} = ${assignment.rootMessageId} THEN ${assignment.topicId}`,
+      ),
+      sql.raw(' '),
+    )
+    const rootMessageIds = assignments.map(assignment => assignment.rootMessageId)
+    const now = Date.now()
+
+    const result = await db
+      .update(chatMessagesTable)
+      .set({
+        topic_id: sql`CASE ${cases} ELSE ${chatMessagesTable.topic_id} END`,
+        updated_at: now,
+      })
+      .where(and(
+        eq(chatMessagesTable.platform, 'telegram'),
+        eq(chatMessagesTable.in_chat_id, chatId),
+        inArray(chatMessagesTable.platform_message_id, rootMessageIds),
+        eq(chatMessagesTable.topic_id, ''),
+      ))
+      .returning()
+
+    return result.length
+  })
+}
+
 /**
  * Soft-delete messages by platform message IDs.
  * This keeps history for potential recovery but excludes deleted data in reads.
@@ -188,7 +225,7 @@ async function fetchMessages(
     const conditions = [
       eq(chatMessagesTable.in_chat_id, chatId),
       notDeletedCondition(),
-      topicId ? eq(chatMessagesTable.topic_id, topicId) : undefined,
+      topicId !== undefined ? eq(chatMessagesTable.topic_id, topicId) : undefined,
       // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).
       sql`(
         ${joinedChatsTable.chat_type} != 'user'
@@ -264,7 +301,7 @@ async function fetchMessageContextWithPhotos(
   return withResult(async () => {
     const contextConditions = [
       eq(chatMessagesTable.in_chat_id, chatId),
-      topicId ? eq(chatMessagesTable.topic_id, topicId) : undefined,
+      topicId !== undefined ? eq(chatMessagesTable.topic_id, topicId) : undefined,
       notDeletedCondition(),
       sql`(
         ${joinedChatsTable.chat_type} != 'user'
@@ -499,6 +536,7 @@ async function retrieveMessages(
 
 export const chatMessageModels = {
   recordMessages,
+  assignTopicForRootMessages,
   softDeleteMessages,
   fetchMessages,
   fetchMessagesByIds,

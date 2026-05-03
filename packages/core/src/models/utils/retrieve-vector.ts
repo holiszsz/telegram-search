@@ -41,7 +41,7 @@ export async function retrieveVector(
     filters?.chatIds?.length ? inArray(chatMessagesTable.in_chat_id, filters.chatIds) : undefined,
     gt(similarity, 0.5),
     filters?.fromUserId ? eq(chatMessagesTable.from_id, filters.fromUserId) : undefined,
-    filters?.topicId ? eq(chatMessagesTable.topic_id, filters.topicId) : undefined,
+    filters?.topicId !== undefined ? eq(chatMessagesTable.topic_id, filters.topicId) : undefined,
     filters?.timeRange?.start ? sql`${chatMessagesTable.platform_timestamp} >= ${filters.timeRange.start}` : undefined,
     filters?.timeRange?.end ? sql`${chatMessagesTable.platform_timestamp} <= ${filters.timeRange.end}` : undefined,
     // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).

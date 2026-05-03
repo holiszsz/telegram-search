@@ -12,6 +12,7 @@ import { v4 as uuidv4 } from 'uuid'
 import { MESSAGE_PROCESS_BATCH_SIZE } from '../constants'
 import { CoreEventType } from '../types/events'
 import { convertToCoreMessage } from '../utils/message'
+import { syncTopicsAndAttachRoots } from './utils/sync-topics'
 
 export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, dbModels?: Models, dialogService?: DialogService) {
   logger = logger.withContext('core:message:event')
@@ -75,7 +76,7 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
       }
 
       const topics = (await dialogService.fetchTopics(chatId, chatAccess.accessHash)).expect('Failed to fetch forum topics')
-      await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+      await syncTopicsAndAttachRoots(ctx.getDB(), chatId, accountId, topics, dbModels)
 
       const syncedTopMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve synced topic root message')
       return { topMessageId: syncedTopMessageId, fallbackToStorage: true }
@@ -94,6 +95,11 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
 
     ctx.emitter.on(CoreEventType.MessageFetchTopic, async (opts) => {
       logger.withFields({ chatId: opts.chatId, topicId: opts.topicId, minId: opts.minId, maxId: opts.maxId }).verbose('Fetching topic messages')
+
+      if (opts.topicId === '') {
+        logger.withFields({ chatId: opts.chatId }).warn('Ignoring empty topic id for topic message fetch')
+        return
+      }
 
       try {
         const { topMessageId, fallbackToStorage } = await resolveTopicTopMessageId(opts.chatId, opts.topicId)

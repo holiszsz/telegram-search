@@ -29,6 +29,12 @@ type PhotoMediaForRecord = CoreMessageMediaPhoto & {
   storagePath?: string
 }
 
+export interface PhotoSearchFilters {
+  chatIds?: string[]
+  topicId?: string
+  timeRange?: { start?: number, end?: number }
+}
+
 async function recordPhotos(db: CoreDB, media: PhotoMediaForRecord[]): Promise<DBInsertPhoto[]> {
   if (media.length === 0) {
     return []
@@ -189,6 +195,7 @@ async function searchPhotosByVector(
   dimension: 768 | 1024 | 1536,
   limit: number = 10,
   minSimilarity: number = 0.2,
+  filters?: PhotoSearchFilters,
 ): PromiseResult<Array<DBSelectPhoto & {
   similarity: number
   chat_id?: string
@@ -202,6 +209,16 @@ async function searchPhotosByVector(
       : dimension === 1024
         ? photosTable.description_vector_1024
         : photosTable.description_vector_768
+
+    const whereConditions = [
+      sql`${vectorColumn} IS NOT NULL`,
+      gt(sql`1 - (${cosineDistance(vectorColumn, embedding)})`, minSimilarity),
+      eq(chatMessagesTable.deleted_at, 0),
+      filters?.chatIds?.length ? inArray(chatMessagesTable.in_chat_id, filters.chatIds) : undefined,
+      filters?.topicId !== undefined ? eq(chatMessagesTable.topic_id, filters.topicId) : undefined,
+      filters?.timeRange?.start ? sql`${chatMessagesTable.platform_timestamp} >= ${filters.timeRange.start}` : undefined,
+      filters?.timeRange?.end ? sql`${chatMessagesTable.platform_timestamp} <= ${filters.timeRange.end}` : undefined,
+    ].filter(Boolean)
 
     const results = await db
       .select({
@@ -233,11 +250,7 @@ async function searchPhotosByVector(
       .from(photosTable)
       .leftJoin(chatMessagesTable, eq(photosTable.message_id, chatMessagesTable.id))
       .leftJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
-      .where(and(
-        sql`${vectorColumn} IS NOT NULL`,
-        gt(sql`1 - (${cosineDistance(vectorColumn, embedding)})`, minSimilarity),
-        eq(chatMessagesTable.deleted_at, 0),
-      ))
+      .where(and(...whereConditions))
       .orderBy(cosineDistance(vectorColumn, embedding))
       .limit(limit)
 
@@ -259,6 +272,7 @@ async function searchPhotosByText(
   db: CoreDB,
   searchText: string,
   limit: number = 10,
+  filters?: PhotoSearchFilters,
 ): PromiseResult<Array<DBSelectPhoto & {
   chat_id?: string
   chat_name?: string
@@ -266,6 +280,15 @@ async function searchPhotosByText(
   platform_message_id?: string
 }>> {
   return withResult(async () => {
+    const whereConditions = [
+      eq(chatMessagesTable.deleted_at, 0),
+      sql`${photosTable.description} ILIKE ${`%${searchText}%`}`,
+      filters?.chatIds?.length ? inArray(chatMessagesTable.in_chat_id, filters.chatIds) : undefined,
+      filters?.topicId !== undefined ? eq(chatMessagesTable.topic_id, filters.topicId) : undefined,
+      filters?.timeRange?.start ? sql`${chatMessagesTable.platform_timestamp} >= ${filters.timeRange.start}` : undefined,
+      filters?.timeRange?.end ? sql`${chatMessagesTable.platform_timestamp} <= ${filters.timeRange.end}` : undefined,
+    ].filter(Boolean)
+
     const results = await db
       .select({
         id: photosTable.id,
@@ -295,10 +318,7 @@ async function searchPhotosByText(
       .from(photosTable)
       .leftJoin(chatMessagesTable, eq(photosTable.message_id, chatMessagesTable.id))
       .leftJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
-      .where(and(
-        eq(chatMessagesTable.deleted_at, 0),
-        sql`${photosTable.description} ILIKE ${`%${searchText}%`}`,
-      ))
+      .where(and(...whereConditions))
       .orderBy(photosTable.created_at)
       .limit(limit)
 

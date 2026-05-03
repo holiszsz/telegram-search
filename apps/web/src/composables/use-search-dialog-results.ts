@@ -110,6 +110,7 @@ export function useSearchDialogResults({
     bridge.sendEvent(CoreEventType.StorageSearchPhotos, {
       requestId: photoRequestId,
       content: newKeyword,
+      topicId: selectedTopicId.value,
       useVector: true,
       pagination: {
         limit: SEARCH_LIMIT,
@@ -201,6 +202,7 @@ export function useSearchDialogResults({
     bridge.sendEvent(CoreEventType.StorageSearchPhotos, {
       requestId,
       content: currentKeyword,
+      topicId: selectedTopicId.value,
       useVector: true,
       pagination: {
         limit: SEARCH_LIMIT,

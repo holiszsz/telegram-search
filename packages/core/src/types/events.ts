@@ -376,6 +376,7 @@ export interface CorePhotoSearchParams {
 
   // Additional filters
   chatIds?: string[] // Filter by specific chats
+  topicId?: string
   timeRange?: {
     start?: number // Unix timestamp in seconds
     end?: number // Unix timestamp in seconds

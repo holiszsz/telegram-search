@@ -5,12 +5,20 @@ import { v4 as uuidv4 } from 'uuid'
 import { describe, expect, it } from 'vitest'
 
 import { mockDB } from '../../db/mock'
+import { accountsTable } from '../../schemas/accounts'
+import { chatMessagesTable } from '../../schemas/chat-messages'
+import { joinedChatsTable } from '../../schemas/joined-chats'
 import { photosTable } from '../../schemas/photos'
+import { usersTable } from '../../schemas/users'
 import { photoModels } from '../photos'
 
 async function setupDb() {
   return mockDB({
+    accountsTable,
+    joinedChatsTable,
+    chatMessagesTable,
     photosTable,
+    usersTable,
   })
 }
 
@@ -191,5 +199,73 @@ describe('models/photos', () => {
       messageUuid3,
     ])).unwrap()
     expect(forBoth.map(p => p.file_id).sort()).toEqual(['file-a', 'file-b', 'file-c'])
+  })
+
+  it('searchPhotosByText treats an empty topicId as the General topic filter', async () => {
+    const db = await setupDb()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-photos',
+      chat_name: 'Forum Photos',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    const [generalMessage, topicMessage] = await db.insert(chatMessagesTable).values([
+      {
+        platform: 'telegram',
+        platform_message_id: '1',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        content: 'general photo',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 1000,
+        created_at: 1000,
+      },
+      {
+        platform: 'telegram',
+        platform_message_id: '2',
+        from_id: 'u1',
+        from_name: 'User 1',
+        in_chat_id: chat.chat_id,
+        in_chat_type: 'supergroup',
+        topic_id: 'alpha',
+        content: 'topic photo',
+        is_reply: false,
+        reply_to_name: '',
+        reply_to_id: '',
+        platform_timestamp: 2000,
+        created_at: 2000,
+      },
+    ]).returning()
+
+    await db.insert(photosTable).values([
+      {
+        platform: 'telegram',
+        file_id: 'general-photo',
+        message_id: generalMessage.id,
+        description: 'shared keyword',
+        image_mime_type: 'image/jpeg',
+      },
+      {
+        platform: 'telegram',
+        file_id: 'topic-photo',
+        message_id: topicMessage.id,
+        description: 'shared keyword',
+        image_mime_type: 'image/jpeg',
+      },
+    ])
+
+    const results = (await photoModels.searchPhotosByText(db, 'shared', 10, {
+      chatIds: [chat.chat_id],
+      topicId: '',
+    })).unwrap()
+
+    expect(results.map(photo => photo.file_id)).toEqual(['general-photo'])
   })
 })

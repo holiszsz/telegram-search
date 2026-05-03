@@ -254,7 +254,10 @@ describe('message event handlers', () => {
         findTopMessageId: vi.fn()
           .mockResolvedValueOnce({ expect: () => undefined })
           .mockResolvedValueOnce({ expect: () => '888' }),
-        recordTopics: vi.fn(),
+        recordTopics: vi.fn(async (_db, topics) => topics),
+      },
+      chatMessageModels: {
+        assignTopicForRootMessages: vi.fn(async () => ({ expect: () => 0 })),
       },
     } as unknown as Models
 
@@ -296,11 +299,42 @@ describe('message event handlers', () => {
       topMessageId: '888',
       title: 'Topic title',
     }], 'telegram', 'account-1')
+    expect(dbModels.chatMessageModels.assignTopicForRootMessages).toHaveBeenCalledWith(ctx.getDB(), '456', [{
+      rootMessageId: '888',
+      topicId: 'topic-1',
+    }])
     expect(mockMessageService.fetchTopicMessages).toHaveBeenCalledWith('456', '888', expect.objectContaining({
       chatId: '456',
       topicId: 'topic-1',
       pagination: { offset: 0, limit: 20 },
     }))
     expect(processedMessages).toEqual(mockMessages)
+  })
+
+  it('message:fetch:topic ignores the General topic sentinel', async () => {
+    const ctx = createCoreContext(getMockEmptyDB, models, logger)
+
+    const dbModels = {
+      chatTopicModels: {
+        findTopMessageId: vi.fn(),
+      },
+    } as unknown as Models
+
+    const mockMessageService = {
+      fetchTopicMessages: vi.fn(),
+    }
+
+    registerMessageEventHandlers(ctx, logger, dbModels)(mockMessageService as any)
+
+    ctx.emitter.emit(CoreEventType.MessageFetchTopic, {
+      chatId: '456',
+      topicId: '',
+      pagination: { offset: 0, limit: 20 },
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    expect(dbModels.chatTopicModels.findTopMessageId).not.toHaveBeenCalled()
+    expect(mockMessageService.fetchTopicMessages).not.toHaveBeenCalled()
   })
 })

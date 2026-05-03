@@ -6,6 +6,7 @@ import type { DialogService } from '../services'
 import type { CoreDialog } from '../types/dialog'
 
 import { CoreEventType } from '../types/events'
+import { syncTopicsAndAttachRoots } from './utils/sync-topics'
 
 async function fetchTopicsForDialog(
   ctx: CoreContext,
@@ -30,7 +31,7 @@ async function fetchTopicsForDialog(
   }
 
   const accountId = ctx.getCurrentAccountId()
-  const recordedTopics = await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+  const recordedTopics = await syncTopicsAndAttachRoots(ctx.getDB(), chatId, accountId, topics, dbModels)
   ctx.emitter.emit(CoreEventType.DialogTopicsData, { chatId, topics: recordedTopics })
 }
 
@@ -119,7 +120,7 @@ export function registerDialogEventHandlers(ctx: CoreContext, logger: Logger, db
       }
 
       const topics = (await dialogService.fetchTopics(chatId, chatAccess.accessHash)).expect('Failed to fetch forum topics')
-      const recordedTopics = await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+      const recordedTopics = await syncTopicsAndAttachRoots(ctx.getDB(), chatId, accountId, topics, dbModels)
       ctx.emitter.emit(CoreEventType.DialogTopicsData, { chatId, topics: recordedTopics })
     })
 

@@ -58,7 +58,7 @@
 - [x] Combines fuzzy matching with vector-based semantic search for highly efficient results
 - [x] Image semantic search: find images by text description via image embedding
 - [x] Infinite scroll for search results — smoother browsing experience
-- [x] Forum topics support: expandable topic list in the sidebar, filter search and chat view by topic, with manual resync to backfill topic IDs on historical messages
+- [x] Forum topics support: expandable topic list in the sidebar (with a dedicated "General" entry), filter chat view, text search, and image search by topic; topic sync auto-attributes root messages, with manual resync to backfill historical messages
 - [x] RAG-powered AI Q&A: Chat with AI using your Telegram history as real-time context
 
 ### 🤖 Telegram Bot

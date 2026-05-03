@@ -17,6 +17,7 @@ import EntityAvatar from '../avatar/EntityAvatar.vue'
 
 import { useChatListSelection } from '../../composables/use-chat-list-selection'
 import { filterChatsByQuery, formatChatTimestamp, getChatPreview, matchesFolder, sortChatsForFolder } from '../../utils/chat-list'
+import { encodeTopicForUrl, GENERAL_TOPIC_DB_VALUE } from '../../utils/topic-route'
 import {
   ContextMenu,
   ContextMenuContent,
@@ -171,7 +172,7 @@ function toggleForumTopics(chat: CoreDialog) {
 function openTopic(chatId: number, topicId: string) {
   void router.push({
     path: `/chat/${chatId}`,
-    query: { topic: topicId },
+    query: { topic: encodeTopicForUrl(topicId) },
   })
 }
 
@@ -694,6 +695,13 @@ function handleTabClickCapture(event: MouseEvent) {
             v-if="chat && chat.isForum && isForumExpanded(chat.id)"
             class="mx-3 mb-2 ml-14 border-l border-border/60 pl-3 space-y-1"
           >
+            <button
+              class="w-full flex items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+              @click="openTopic(chat.id, GENERAL_TOPIC_DB_VALUE)"
+            >
+              <span class="i-lucide-message-circle h-3.5 w-3.5 shrink-0" />
+              <span class="min-w-0 flex-1 truncate">{{ t('chatList.generalTopic') }}</span>
+            </button>
             <button
               v-for="topic in chatTopicsStore.getTopics(String(chat.id))"
               :key="topic.topicId"

@@ -8,6 +8,8 @@ import { useRouter } from 'vue-router'
 
 import EntityAvatar from '../avatar/EntityAvatar.vue'
 
+import { encodeTopicForUrl } from '../../utils/topic-route'
+
 const props = withDefaults(defineProps<{
   messages: CoreMessage[]
   keyword: string
@@ -45,7 +47,7 @@ function navigateToMessage(message: CoreMessage) {
     query: {
       messageId: message.platformMessageId,
       messageUuid: message.uuid,
-      ...(message.topicId ? { topic: message.topicId } : {}),
+      ...(message.topicId ? { topic: encodeTopicForUrl(message.topicId) } : {}),
     },
   })
 }

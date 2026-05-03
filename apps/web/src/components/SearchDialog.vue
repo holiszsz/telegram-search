@@ -19,6 +19,7 @@ import {
   filterSearchDialogCommands,
   matchesSearchChatTypeFilter,
 } from '../utils/search-dialog'
+import { GENERAL_TOPIC_DB_VALUE } from '../utils/topic-route'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -69,6 +70,10 @@ const currentTopics = computed(() => props.chatId ? chatTopicsStore.getTopics(pr
 const activeTopicFilterMeta = computed(() => {
   if (topicFilter.value === 'all') {
     return t('searchDialog.topicAll')
+  }
+
+  if (topicFilter.value === GENERAL_TOPIC_DB_VALUE) {
+    return t('searchDialog.topicGeneral')
   }
 
   return currentTopics.value.find(topic => topic.topicId === topicFilter.value)?.title
@@ -407,6 +412,16 @@ watch(isOpen, (open) => {
                   <span>{{ t('searchDialog.topicAll') }}</span>
                   <span
                     v-if="topicFilter === 'all'"
+                    class="i-lucide-check h-4 w-4 text-primary"
+                  />
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  class="flex items-center justify-between rounded-xl px-3 py-2"
+                  @select="selectTopicFilter(GENERAL_TOPIC_DB_VALUE)"
+                >
+                  <span>{{ t('searchDialog.topicGeneral') }}</span>
+                  <span
+                    v-if="topicFilter === GENERAL_TOPIC_DB_VALUE"
                     class="i-lucide-check h-4 w-4 text-primary"
                   />
                 </DropdownMenuItem>

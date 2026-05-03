@@ -15,11 +15,11 @@ export function registerMessageResolverEventHandlers(ctx: CoreContext, logger: L
     const queue = newQueue(MESSAGE_RESOLVER_QUEUE_SIZE)
 
     // TODO: debounce, background tasks
-    ctx.emitter.on(CoreEventType.MessageProcess, ({ messages, isTakeout = false, syncOptions = {}, forceRefetch = false, batchId }) => {
-      logger.withFields({ count: messages.length, isTakeout, syncOptions, forceRefetch, batchId }).verbose('Processing messages')
+    ctx.emitter.on(CoreEventType.MessageProcess, ({ messages, isTakeout = false, syncOptions = {}, topicIdOverride, forceRefetch = false, batchId }) => {
+      logger.withFields({ count: messages.length, isTakeout, syncOptions, topicIdOverride, forceRefetch, batchId }).verbose('Processing messages')
 
       if (!isTakeout) {
-        messageResolverService.processMessages(messages, { takeout: false, syncOptions, forceRefetch, batchId }).catch((error) => {
+        messageResolverService.processMessages(messages, { takeout: false, syncOptions, topicIdOverride, forceRefetch, batchId }).catch((error) => {
           logger.withError(error).warn('Failed to process realtime messages')
         })
 
@@ -28,7 +28,7 @@ export function registerMessageResolverEventHandlers(ctx: CoreContext, logger: L
 
       // Only use queue for takeout mode to avoid overwhelming the system.
       void queue.add(async () => {
-        messageResolverService.processMessages(messages, { takeout: true, syncOptions, forceRefetch, batchId }).catch((error) => {
+        messageResolverService.processMessages(messages, { takeout: true, syncOptions, topicIdOverride, forceRefetch, batchId }).catch((error) => {
           logger.withError(error).warn('Failed to process takeout messages')
         })
       })

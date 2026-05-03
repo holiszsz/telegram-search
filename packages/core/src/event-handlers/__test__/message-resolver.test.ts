@@ -52,6 +52,42 @@ describe('message-resolver event handlers', () => {
     })
   })
 
+  it('should forward topicIdOverride to messageResolverService for topic fetches', async () => {
+    const ctx = createCoreContext(getMockEmptyDB, models, logger)
+
+    const service: MessageResolverService = {
+      processMessages: vi.fn(async () => {
+        // noop
+      }),
+    } as unknown as MessageResolverService
+
+    const registerHandlers = registerMessageResolverEventHandlers(ctx, logger)
+    registerHandlers(service)
+
+    const telegramMessage = new Api.Message({
+      id: 124,
+      peerId: new Api.PeerChannel({ channelId: bigInt(456) }),
+      message: 'Topic reply',
+      date: Math.floor(Date.now() / 1000),
+    })
+
+    ctx.emitter.emit(CoreEventType.MessageProcess, {
+      messages: [telegramMessage],
+      topicIdOverride: 'topic-1',
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(service.processMessages).toHaveBeenCalledTimes(1)
+    const [, options] = (service.processMessages as unknown as ReturnType<typeof vi.fn>).mock.calls[0]
+    // Telegram replies may expose the topic root message id, not the topic id
+    // used by filters; preserving this override prevents empty topic views.
+    expect(options).toMatchObject({
+      takeout: false,
+      topicIdOverride: 'topic-1',
+    })
+  })
+
   it('should forward forceRefetch to messageResolverService in takeout mode via queue', async () => {
     const ctx = createCoreContext(getMockEmptyDB, models, logger)
 

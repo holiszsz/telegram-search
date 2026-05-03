@@ -24,7 +24,10 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
         .map(result => result.unwrap())
     }
 
-    async function emitFetchedMessages(messageSource: AsyncGenerator<Api.Message>) {
+    async function emitFetchedMessages(
+      messageSource: AsyncGenerator<Api.Message>,
+      options: { topicIdOverride?: string } = {},
+    ) {
       let messages: Api.Message[] = []
       for await (const message of messageSource) {
         messages.push(message)
@@ -36,50 +39,50 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
             batchSize,
           }).debug('Processing message batch')
 
-          ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
+          ctx.emitter.emit(CoreEventType.MessageProcess, { messages, topicIdOverride: options.topicIdOverride })
           messages = []
         }
       }
 
       if (messages.length > 0) {
-        ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
+        ctx.emitter.emit(CoreEventType.MessageProcess, { messages, topicIdOverride: options.topicIdOverride })
       }
     }
 
-    async function resolveTopicTopMessageId(chatId: string, topicId: string): Promise<{ topMessageId?: string, fallbackToStorage: boolean }> {
+    async function ensureTopicMetadata(chatId: string, topicId: string): Promise<{ found: boolean, fallbackToStorage: boolean }> {
       if (!dbModels) {
         ctx.withError('Missing db models', 'Cannot resolve forum topic metadata')
-        return { fallbackToStorage: false }
+        return { found: false, fallbackToStorage: false }
       }
 
       const accountId = ctx.getCurrentAccountId()
       const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId)).expect('Failed to check chat access')
       if (!hasAccess) {
         ctx.withError('Unauthorized chat access', 'Account does not have access to requested topic messages')
-        return { fallbackToStorage: false }
+        return { found: false, fallbackToStorage: false }
       }
 
-      const topMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve topic root message')
+      const topMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve topic metadata')
       if (topMessageId) {
-        return { topMessageId, fallbackToStorage: true }
+        return { found: true, fallbackToStorage: true }
       }
 
       if (!dialogService) {
         ctx.withError('Missing dialog service', 'Cannot sync forum topic metadata')
-        return { fallbackToStorage: true }
+        return { found: false, fallbackToStorage: true }
       }
 
       const chatAccess = (await dbModels.chatModels.findChatAccessHash(ctx.getDB(), accountId, chatId)).expect('Failed to resolve chat access hash')
       if (!chatAccess?.accessHash) {
         ctx.withError('Missing chat access hash', 'Cannot sync forum topics without a stored access hash')
-        return { fallbackToStorage: true }
+        return { found: false, fallbackToStorage: true }
       }
 
       const topics = (await dialogService.fetchTopics(chatId, chatAccess.accessHash)).expect('Failed to fetch forum topics')
       await syncTopicsAndAttachRoots(ctx.getDB(), chatId, accountId, topics, dbModels)
 
-      const syncedTopMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve synced topic root message')
-      return { topMessageId: syncedTopMessageId, fallbackToStorage: true }
+      const syncedTopMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve synced topic metadata')
+      return { found: syncedTopMessageId != null, fallbackToStorage: true }
     }
 
     ctx.emitter.on(CoreEventType.MessageFetch, async (opts) => {
@@ -102,8 +105,8 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
       }
 
       try {
-        const { topMessageId, fallbackToStorage } = await resolveTopicTopMessageId(opts.chatId, opts.topicId)
-        if (!topMessageId) {
+        const { found, fallbackToStorage } = await ensureTopicMetadata(opts.chatId, opts.topicId)
+        if (!found) {
           if (fallbackToStorage) {
             ctx.emitter.emit(CoreEventType.StorageFetchMessages, {
               chatId: opts.chatId,
@@ -114,7 +117,9 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
           return
         }
 
-        await emitFetchedMessages(messageService.fetchTopicMessages(opts.chatId, topMessageId, opts))
+        await emitFetchedMessages(messageService.fetchTopicMessages(opts.chatId, opts.topicId, opts), {
+          topicIdOverride: opts.topicId,
+        })
       }
       catch (error) {
         ctx.withError(error, 'Failed to fetch topic messages')

@@ -26,6 +26,7 @@ export function createMessageResolverService(
     options: {
       takeout?: boolean
       syncOptions?: SyncOptions
+      topicIdOverride?: string
       forceRefetch?: boolean
       batchId?: string
     } = {},
@@ -42,6 +43,7 @@ export function createMessageResolverService(
     options: {
       takeout?: boolean
       syncOptions?: SyncOptions
+      topicIdOverride?: string
       forceRefetch?: boolean
       batchId?: string
     } = {},
@@ -51,6 +53,7 @@ export function createMessageResolverService(
       count: messages.length,
       takeout: options.takeout,
       syncOptions: options.syncOptions,
+      topicIdOverride: options.topicIdOverride,
       forceRefetch: options.forceRefetch,
     }).verbose('Process messages')
 
@@ -60,6 +63,12 @@ export function createMessageResolverService(
     const coreMessages = messages
       .map(message => convertToCoreMessage(message).orUndefined())
       .filter(message => message != null)
+
+    if (options.topicIdOverride !== undefined) {
+      for (const message of coreMessages) {
+        message.topicId = options.topicIdOverride
+      }
+    }
 
     logger.withFields({ count: coreMessages.length }).debug('Converted messages')
 

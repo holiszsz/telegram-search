@@ -130,7 +130,7 @@ describe('message event handlers', () => {
     expect(processedMessages).toHaveLength(0)
   })
 
-  it('message:fetch:topic resolves topMessageId and emits message:process', async () => {
+  it('message:fetch:topic validates metadata but fetches by topicId', async () => {
     const ctx = createCoreContext(getMockEmptyDB, models, logger)
     ctx.setCurrentAccountId('account-1')
 
@@ -153,7 +153,7 @@ describe('message event handlers', () => {
         findChatAccessHash: vi.fn(),
       },
       chatTopicModels: {
-        findTopMessageId: vi.fn(async () => ({ expect: () => '777' })),
+        findTopMessageId: vi.fn(async () => ({ expect: () => '465434' })),
         recordTopics: vi.fn(),
       },
     } as unknown as Models
@@ -165,24 +165,29 @@ describe('message event handlers', () => {
     registerMessageEventHandlers(ctx, logger, dbModels)(mockMessageService as any)
 
     const processedMessages: Api.Message[] = []
-    ctx.emitter.on(CoreEventType.MessageProcess, ({ messages }) => {
+    let topicIdOverride: string | undefined
+    ctx.emitter.on(CoreEventType.MessageProcess, ({ messages, topicIdOverride: nextTopicIdOverride }) => {
       processedMessages.push(...messages)
+      topicIdOverride = nextTopicIdOverride
     })
 
     ctx.emitter.emit(CoreEventType.MessageFetchTopic, {
       chatId: '456',
-      topicId: 'topic-1',
+      topicId: '1',
       pagination: { offset: 0, limit: 20 },
     })
 
     await new Promise(resolve => setTimeout(resolve, 100))
 
-    expect(dbModels.chatTopicModels.findTopMessageId).toHaveBeenCalledWith(ctx.getDB(), '456', 'topic-1')
-    expect(mockMessageService.fetchTopicMessages).toHaveBeenCalledWith('456', '777', expect.objectContaining({
+    expect(dbModels.chatTopicModels.findTopMessageId).toHaveBeenCalledWith(ctx.getDB(), '456', '1')
+    expect(mockMessageService.fetchTopicMessages).toHaveBeenCalledWith('456', '1', expect.objectContaining({
       chatId: '456',
-      topicId: 'topic-1',
+      topicId: '1',
       pagination: { offset: 0, limit: 20 },
     }))
+    // Telegram ForumTopic.topMessage is the latest message in the topic, not
+    // the msgId accepted by GetReplies; fetch with the topic id instead.
+    expect(topicIdOverride).toBe('1')
     expect(processedMessages).toEqual(mockMessages)
   })
 
@@ -228,7 +233,7 @@ describe('message event handlers', () => {
     }])
   })
 
-  it('message:fetch:topic syncs topics before fetching when topMessageId is missing locally', async () => {
+  it('message:fetch:topic syncs topics before fetching when topic metadata is missing locally', async () => {
     const ctx = createCoreContext(getMockEmptyDB, models, logger)
     ctx.setCurrentAccountId('account-1')
 
@@ -253,7 +258,7 @@ describe('message event handlers', () => {
       chatTopicModels: {
         findTopMessageId: vi.fn()
           .mockResolvedValueOnce({ expect: () => undefined })
-          .mockResolvedValueOnce({ expect: () => '888' }),
+          .mockResolvedValueOnce({ expect: () => '465434' }),
         recordTopics: vi.fn(async (_db, topics) => topics),
       },
       chatMessageModels: {
@@ -265,8 +270,8 @@ describe('message event handlers', () => {
       fetchTopics: vi.fn(async () => ({
         expect: () => [{
           chatId: '456',
-          topicId: 'topic-1',
-          topMessageId: '888',
+          topicId: '1',
+          topMessageId: '465434',
           title: 'Topic title',
         }],
       })),
@@ -285,7 +290,7 @@ describe('message event handlers', () => {
 
     ctx.emitter.emit(CoreEventType.MessageFetchTopic, {
       chatId: '456',
-      topicId: 'topic-1',
+      topicId: '1',
       pagination: { offset: 0, limit: 20 },
     })
 
@@ -295,17 +300,17 @@ describe('message event handlers', () => {
     expect(dialogService.fetchTopics).toHaveBeenCalledWith('456', '999')
     expect(dbModels.chatTopicModels.recordTopics).toHaveBeenCalledWith(ctx.getDB(), [{
       chatId: '456',
-      topicId: 'topic-1',
-      topMessageId: '888',
+      topicId: '1',
+      topMessageId: '465434',
       title: 'Topic title',
     }], 'telegram', 'account-1')
     expect(dbModels.chatMessageModels.assignTopicForRootMessages).toHaveBeenCalledWith(ctx.getDB(), '456', [{
-      rootMessageId: '888',
-      topicId: 'topic-1',
+      rootMessageId: '465434',
+      topicId: '1',
     }])
-    expect(mockMessageService.fetchTopicMessages).toHaveBeenCalledWith('456', '888', expect.objectContaining({
+    expect(mockMessageService.fetchTopicMessages).toHaveBeenCalledWith('456', '1', expect.objectContaining({
       chatId: '456',
-      topicId: 'topic-1',
+      topicId: '1',
       pagination: { offset: 0, limit: 20 },
     }))
     expect(processedMessages).toEqual(mockMessages)

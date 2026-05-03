@@ -543,6 +543,7 @@ export interface MessageResolverEventToCore {
     messages: Api.Message[]
     isTakeout?: boolean
     syncOptions?: SyncOptions
+    topicIdOverride?: string
     forceRefetch?: boolean
     batchId?: string
   }) => void

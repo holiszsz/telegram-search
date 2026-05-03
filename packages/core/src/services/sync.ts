@@ -5,7 +5,10 @@ import type { CoreContext } from '../context'
 import { Api } from 'telegram'
 
 import { accountModels } from '../models/accounts'
+import { chatMessageModels } from '../models/chat-message'
+import { chatModels } from '../models/chats'
 import { CoreEventType } from '../types/events'
+import { applyDeleteUpdate } from './apply-delete-update'
 
 export function createSyncService(
   ctx: CoreContext,
@@ -129,7 +132,6 @@ export function createSyncService(
             progress: `${progress}%`,
           }).log('Syncing messages batch (Text only)')
 
-          // TODO: sync media, with delete at
           ctx.emitter.emit(CoreEventType.MessageProcess, {
             messages: validMessages,
             isTakeout: false,
@@ -143,6 +145,26 @@ export function createSyncService(
 
           // Faster throttle since we are skipping media
           await new Promise(resolve => setTimeout(resolve, 20))
+        }
+
+        const otherUpdates = 'otherUpdates' in difference ? difference.otherUpdates : []
+        for (const update of otherUpdates) {
+          if (update instanceof Api.UpdateDeleteMessages) {
+            await applyDeleteUpdate(ctx, logger, { accountModels, chatModels, chatMessageModels }, {
+              messageIds: update.messages.map(id => id.toString()),
+              pts: update.pts,
+              date: currentDate,
+              isChannel: false,
+            })
+          }
+          else if (update instanceof Api.UpdateDeleteChannelMessages) {
+            await applyDeleteUpdate(ctx, logger, { accountModels, chatModels, chatMessageModels }, {
+              messageIds: update.messages.map(id => id.toString()),
+              chatId: update.channelId.toJSNumber().toString(),
+              pts: update.pts,
+              isChannel: true,
+            })
+          }
         }
 
         const nextState = 'state' in difference ? difference.state : 'intermediateState' in difference ? difference.intermediateState : undefined

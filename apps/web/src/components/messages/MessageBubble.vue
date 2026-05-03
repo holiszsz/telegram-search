@@ -78,6 +78,7 @@ const isMediaOnlyMessage = computed(() => {
 })
 
 const usesBubbleShell = computed(() => !isMediaOnlyMessage.value)
+const isDeletedMessage = computed(() => messageStore.isMessageDeleted(props.message))
 const isUpdatedMessage = computed(() => {
   return messageStore.isMessageEdited(props.message)
 })
@@ -97,7 +98,7 @@ const messageBodyPaddingClass = computed(() => {
     return ''
   }
 
-  if (isUpdatedMessage.value) {
+  if (isDeletedMessage.value || isUpdatedMessage.value) {
     return isCompactTextMessage.value ? 'pr-23 pb-0.75' : 'pr-22 pb-2'
   }
 
@@ -174,6 +175,14 @@ const bubbleStretchClass = computed(() => {
   return isOwnMessage.value
     ? 'origin-right bubble-stretch'
     : 'origin-left bubble-stretch'
+})
+
+const deletedBodyClass = computed(() => {
+  if (!isDeletedMessage.value) {
+    return ''
+  }
+
+  return 'text-muted-foreground italic line-through decoration-1'
 })
 
 watch(
@@ -318,7 +327,7 @@ function cancelLongPress() {
     class="group mx-1.5 flex items-end gap-2 px-3 py-0 md:mx-3"
     :class="[
       isOwnMessage ? 'justify-end' : 'justify-start',
-      isDeletingMessage ? 'pointer-events-none opacity-0 scale-[0.96] blur-[1px] transition-all duration-300 ease-out' : '',
+      isDeletingMessage ? 'pointer-events-none' : '',
     ]"
     @contextmenu="showContextMenu"
     @pointerdown="onPointerDown"
@@ -361,6 +370,8 @@ function cancelLongPress() {
             ? [
               'message-bubble-shell px-3.5 py-1.5 shadow-sm',
               bubbleShapeClass,
+              isDeletedMessage ? 'opacity-60' : '',
+              isDeletingMessage ? 'ring-1 ring-amber-400/45' : '',
               isOwnMessage
                 ? 'message-bubble-shell--own'
                 : 'message-bubble-shell--incoming',
@@ -392,6 +403,8 @@ function cancelLongPress() {
           class="relative z-10 max-w-full min-w-0 text-[14px] leading-[1.35]"
           :class="[
             messageBodyPaddingClass,
+            deletedBodyClass,
+            isDeletedMessage && message.media?.length ? 'grayscale opacity-70' : '',
           ]"
         >
           <MediaRenderer :message="animatedMessage" />
@@ -402,7 +415,8 @@ function cancelLongPress() {
           class="message-bubble-meta pointer-events-none z-10 flex items-center gap-1.5 text-[10px] leading-none opacity-80"
           :class="bubbleMetaClass"
         >
-          <span v-if="isUpdatedMessage">{{ t('messages.updated') }}</span>
+          <span v-if="isDeletedMessage">{{ t('messages.deleted') }}</span>
+          <span v-else-if="isUpdatedMessage">{{ t('messages.updated') }}</span>
           <span>{{ bubbleTime }}</span>
         </div>
       </div>
@@ -411,6 +425,8 @@ function cancelLongPress() {
         v-if="!usesBubbleShell"
         class="message-bubble-meta mt-1 px-1 text-[11px] leading-none opacity-80"
       >
+        <span v-if="isDeletedMessage">{{ t('messages.deleted') }} · </span>
+        <span v-else-if="isUpdatedMessage">{{ t('messages.updated') }} · </span>
         {{ bubbleTime }}
       </div>
 

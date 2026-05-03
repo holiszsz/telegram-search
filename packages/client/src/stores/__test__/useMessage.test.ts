@@ -139,6 +139,28 @@ describe('useMessageStore', () => {
     expect(store.sortedMessageIds).toEqual(['1'])
   })
 
+  it('marks deleted messages in place without removing them', () => {
+    const store = useMessageStore()
+    const message = createTestMessage({
+      platformMessageId: '1',
+      chatId: 'chat-1',
+      content: 'deleted later',
+      platformTimestamp: 1000,
+      createdAt: 1000,
+      updatedAt: 2000,
+    })
+
+    store.replaceMessages([message], { chatId: 'chat-1' })
+    store.startDeletingMessages('chat-1', ['1'], 3000)
+
+    const deletedMessage = store.messageWindow.get('1')
+    // Deleted rows used to be removed from MessageWindow, which made soft-delete indistinguishable from hard-delete.
+    expect(store.sortedMessageIds).toEqual(['1'])
+    expect(deletedMessage?.deletedAt).toBe(3000)
+    expect(store.isMessageDeleted(deletedMessage!)).toBe(true)
+    expect(store.isMessageEdited(deletedMessage!)).toBe(false)
+  })
+
   it('fetches messages with pagination', async () => {
     const store = useMessageStore()
     const { fetchMessages, isLoading } = store.useFetchMessages('chat-1', 50)

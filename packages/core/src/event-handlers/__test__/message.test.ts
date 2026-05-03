@@ -15,6 +15,141 @@ const models = {} as unknown as Models
 const logger = useLogger()
 
 describe('message event handlers', () => {
+  it('message:fetch serves a complete page from storage including deleted rows', async () => {
+    const ctx = createCoreContext(getMockEmptyDB, models, logger)
+    ctx.setCurrentAccountId('account-1')
+
+    const storedMessages = [
+      {
+        uuid: 'uuid-1',
+        platform: 'telegram',
+        platformMessageId: '10',
+        chatId: 'chat-1',
+        fromId: 'user-1',
+        fromName: 'User 1',
+        content: 'deleted',
+        reply: { isReply: false },
+        forward: { isForward: false },
+        platformTimestamp: 1000,
+        deletedAt: 5000,
+      },
+    ]
+
+    const dbModels = {
+      chatMessageModels: {
+        fetchMessagesWithPhotos: vi.fn(async () => ({ unwrap: () => storedMessages })),
+      },
+      photoModels: {},
+    } as unknown as Models
+
+    const mockMessageService = {
+      fetchMessages: vi.fn(),
+    }
+    const mockResolverService = {
+      processMessages: vi.fn(),
+    }
+
+    registerMessageEventHandlers(ctx, logger, dbModels, undefined, mockResolverService as any)(mockMessageService as any)
+
+    const batches: any[] = []
+    ctx.emitter.on(CoreEventType.MessageData, data => batches.push(data))
+
+    ctx.emitter.emit(CoreEventType.MessageFetch, {
+      chatId: 'chat-1',
+      pagination: { offset: 0, limit: 1 },
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    expect(dbModels.chatMessageModels.fetchMessagesWithPhotos).toHaveBeenCalledWith(
+      ctx.getDB(),
+      dbModels.photoModels,
+      'account-1',
+      'chat-1',
+      { offset: 0, limit: 1 },
+      { includeDeleted: true, minId: undefined, maxId: undefined },
+    )
+    expect(mockMessageService.fetchMessages).not.toHaveBeenCalled()
+    expect(mockResolverService.processMessages).not.toHaveBeenCalled()
+    expect(batches).toEqual([{ messages: storedMessages }])
+  })
+
+  it('message:fetch waits for Telegram backfill before emitting one merged storage batch', async () => {
+    const ctx = createCoreContext(getMockEmptyDB, models, logger)
+    ctx.setCurrentAccountId('account-1')
+
+    const storedAfterBackfill = [
+      {
+        uuid: 'uuid-1',
+        platform: 'telegram',
+        platformMessageId: '10',
+        chatId: 'chat-1',
+        fromId: 'user-1',
+        fromName: 'User 1',
+        content: 'recorded',
+        reply: { isReply: false },
+        forward: { isForward: false },
+        platformTimestamp: 1000,
+      },
+    ]
+    const order: string[] = []
+
+    const dbModels = {
+      chatMessageModels: {
+        fetchMessagesWithPhotos: vi
+          .fn()
+          .mockImplementationOnce(async () => {
+            order.push('fetch-before')
+            return { unwrap: () => [] }
+          })
+          .mockImplementationOnce(async () => {
+            order.push('fetch-after')
+            return { unwrap: () => storedAfterBackfill }
+          }),
+      },
+      photoModels: {},
+    } as unknown as Models
+
+    const telegramMessage = new Api.Message({
+      id: 10,
+      peerId: new Api.PeerUser({ userId: bigInt(456) }),
+      message: 'recorded',
+      date: Math.floor(Date.now() / 1000),
+    })
+
+    async function* fetchMessages() {
+      yield telegramMessage
+    }
+
+    const mockMessageService = {
+      fetchMessages: vi.fn(() => fetchMessages()),
+    }
+    const mockResolverService = {
+      processMessages: vi.fn(async () => {
+        await new Promise(resolve => setTimeout(resolve, 20))
+        order.push('process')
+      }),
+    }
+
+    registerMessageEventHandlers(ctx, logger, dbModels, undefined, mockResolverService as any)(mockMessageService as any)
+
+    const batches: any[] = []
+    ctx.emitter.on(CoreEventType.MessageData, data => batches.push(data))
+
+    ctx.emitter.emit(CoreEventType.MessageFetch, {
+      chatId: 'chat-1',
+      pagination: { offset: 0, limit: 20 },
+    })
+
+    await new Promise(resolve => setTimeout(resolve, 100))
+
+    expect(mockResolverService.processMessages).toHaveBeenCalledWith([telegramMessage], {
+      emitMessageData: false,
+    })
+    expect(order).toEqual(['fetch-before', 'process', 'fetch-after'])
+    expect(batches).toEqual([{ messages: storedAfterBackfill }])
+  })
+
   it('message:reprocess should fetch messages and emit message:process with forceRefetch', async () => {
     const ctx = createCoreContext(getMockEmptyDB, models, logger)
 

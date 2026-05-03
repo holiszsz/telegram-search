@@ -20,7 +20,7 @@ function hasNoMedia(message: CoreMessage): boolean {
 export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, dbModels: Models) {
   logger = logger.withContext('core:storage:event')
 
-  ctx.emitter.on(CoreEventType.StorageFetchMessages, async ({ chatId, pagination, topicId }) => {
+  ctx.emitter.on(CoreEventType.StorageFetchMessages, async ({ chatId, pagination, topicId, includeDeleted = true }) => {
     logger.withFields({ chatId, pagination, topicId }).verbose('Fetching messages')
 
     const accountId = ctx.getCurrentAccountId()
@@ -31,7 +31,10 @@ export function registerStorageEventHandlers(ctx: CoreContext, logger: Logger, d
       return
     }
 
-    const messages = (await dbModels.chatMessageModels.fetchMessagesWithPhotos(ctx.getDB(), dbModels.photoModels, accountId, chatId, pagination, topicId)).unwrap()
+    const messages = (await dbModels.chatMessageModels.fetchMessagesWithPhotos(ctx.getDB(), dbModels.photoModels, accountId, chatId, pagination, {
+      topicId,
+      includeDeleted,
+    })).unwrap()
     ctx.emitter.emit(CoreEventType.StorageMessages, { messages })
   })
 

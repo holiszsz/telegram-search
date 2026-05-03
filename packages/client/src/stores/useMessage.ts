@@ -19,7 +19,7 @@ import { useSessionStore } from './useSession'
 
 export const useMessageStore = defineStore('message', () => {
   const MESSAGE_EDIT_ANIMATION_MS = 320
-  const MESSAGE_DELETE_ANIMATION_MS = 260
+  const MESSAGE_DELETE_ANIMATION_MS = 200
   const MESSAGE_CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000
   const MESSAGE_CACHE_VERSION = 1
   const MAX_CACHED_MESSAGE_SCOPES = 8
@@ -219,7 +219,7 @@ export const useMessageStore = defineStore('message', () => {
     }, MESSAGE_EDIT_ANIMATION_MS)
   }
 
-  function startDeletingMessages(chatId: string | undefined, messageIds: string[]) {
+  function startDeletingMessages(chatId: string | undefined, messageIds: string[], deletedAt: number) {
     if (!messageWindow.value || messageIds.length === 0) {
       return
     }
@@ -227,6 +227,9 @@ export const useMessageStore = defineStore('message', () => {
     const activeChatId = currentChatId.value
     const targetChatId = activeChatId ?? chatId
     if (!targetChatId) {
+      return
+    }
+    if (chatId && activeChatId && chatId !== activeChatId) {
       return
     }
 
@@ -238,18 +241,14 @@ export const useMessageStore = defineStore('message', () => {
 
     for (const messageId of existingIds) {
       nextDeleting[toMessageKey(targetChatId, messageId)] = Date.now()
+      messageWindow.value.update(messageId, message => ({
+        ...message,
+        deletedAt,
+      }))
     }
     deletingMessageKeys.value = nextDeleting
 
     window.setTimeout(() => {
-      if (!messageWindow.value) {
-        return
-      }
-
-      for (const messageId of existingIds) {
-        messageWindow.value.remove(messageId)
-      }
-
       deletingMessageKeys.value = Object.fromEntries(
         Object.entries(deletingMessageKeys.value).filter(([key]) => !existingIds.some(messageId => key === toMessageKey(targetChatId, messageId))),
       )
@@ -260,11 +259,19 @@ export const useMessageStore = defineStore('message', () => {
     return !!deletingMessageKeys.value[toMessageKey(message.chatId, message.platformMessageId)]
   }
 
+  function isMessageDeleted(message: Pick<CoreMessage, 'deletedAt'>) {
+    return (message.deletedAt ?? 0) > 0
+  }
+
   function isMessageEditing(message: Pick<CoreMessage, 'chatId' | 'platformMessageId'>) {
     return !!editingMessageKeys.value[toMessageKey(message.chatId, message.platformMessageId)]
   }
 
-  function isMessageEdited(message: Pick<CoreMessage, 'chatId' | 'platformMessageId' | 'createdAt' | 'updatedAt'>) {
+  function isMessageEdited(message: Pick<CoreMessage, 'chatId' | 'platformMessageId' | 'createdAt' | 'updatedAt' | 'deletedAt'>) {
+    if (isMessageDeleted(message)) {
+      return false
+    }
+
     if (isMessageEditing(message)) {
       return true
     }
@@ -556,6 +563,7 @@ export const useMessageStore = defineStore('message', () => {
     queueRealtimeEditHint,
     startDeletingMessages,
     isMessageDeleting,
+    isMessageDeleted,
     isMessageEditing,
     isMessageEdited,
     isMessageMarkedEdited,

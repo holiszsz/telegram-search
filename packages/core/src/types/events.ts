@@ -208,7 +208,7 @@ export interface MessageEventFromCore {
   [CoreEventType.MessageUnreadData]: (data: { messages: CoreMessage[] }) => void
   [CoreEventType.MessageSummaryData]: (data: { messages: CoreMessage[], mode: SummaryMode, requestId?: string }) => void
   [CoreEventType.MessageUpdated]: (data: { chatId: string, messageId: string }) => void
-  [CoreEventType.MessageDeleted]: (data: { chatId?: string, messageIds: string[] }) => void
+  [CoreEventType.MessageDeleted]: (data: { chatId?: string, messageIds: string[], deletedAt: number }) => void
 }
 
 export interface FetchMessageOpts {
@@ -320,7 +320,7 @@ export type CoreEntity = CoreUserEntity | CoreChatEntity | CoreChannelEntity
 // ============================================================================
 
 export interface StorageEventToCore {
-  [CoreEventType.StorageFetchMessages]: (data: { chatId: string, pagination: CorePagination, topicId?: string }) => void
+  [CoreEventType.StorageFetchMessages]: (data: { chatId: string, pagination: CorePagination, topicId?: string, includeDeleted?: boolean }) => void
   [CoreEventType.StorageRecordMessages]: (data: { messages: CoreMessage[] }) => void
 
   [CoreEventType.StorageFetchDialogs]: (data: { accountId: string }) => void

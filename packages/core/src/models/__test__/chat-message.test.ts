@@ -379,6 +379,48 @@ describe('models/chat-message', () => {
     expect(dbMessagesResults.map(m => m.platform_message_id)).toEqual(['3', '1'])
   })
 
+  it('softDeleteMessages stores the supplied deletedAt and fetchMessages can include deleted rows', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'chat-1',
+      chat_name: 'Private Chat',
+      chat_type: 'user',
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id, content: 'kept', platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, content: 'deleted', platformTimestamp: 2000 }),
+    ])
+
+    const deletedAt = 123456789
+    // Deletion events must use one server timestamp for both storage and UI payloads.
+    const count = await chatMessageModels.softDeleteMessages(db, account.id, ['2'], { chatId: chat.chat_id, deletedAt })
+
+    expect(count).toBe(1)
+
+    const [deletedRow] = await db
+      .select()
+      .from(chatMessagesTable)
+      .where(eq(chatMessagesTable.platform_message_id, '2'))
+    expect(deletedRow.deleted_at).toBe(deletedAt)
+
+    const visibleByDefault = (await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 })).unwrap()
+    expect(visibleByDefault.dbMessagesResults.map(message => message.platform_message_id)).toEqual(['1'])
+
+    const withDeleted = (await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 }, { includeDeleted: true })).unwrap()
+    expect(withDeleted.coreMessages.map(message => [message.platformMessageId, message.deletedAt])).toEqual([
+      ['2', deletedAt],
+      ['1', 0],
+    ])
+  })
+
   it('fetchMessages orders by Telegram timestamp instead of insertion time', async () => {
     const db = await setupDb()
 

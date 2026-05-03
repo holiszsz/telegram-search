@@ -27,8 +27,8 @@ export function registerMessageEventHandlers(
     useMessageStore().queueRealtimeEditHint(chatId, messageId)
   })
 
-  registerEventHandler(CoreEventType.MessageDeleted, ({ chatId, messageIds }) => {
-    useMessageStore().startDeletingMessages(chatId, messageIds)
+  registerEventHandler(CoreEventType.MessageDeleted, ({ chatId, messageIds, deletedAt }) => {
+    useMessageStore().startDeletingMessages(chatId, messageIds, deletedAt)
   })
 
   registerEventHandler(CoreEventType.MessageUnreadData, ({ messages }) => {

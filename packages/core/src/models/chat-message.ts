@@ -24,6 +24,13 @@ import { convertDBPhotoToCoreMessageMedia } from './utils/photos'
 import { retrieveJieba } from './utils/retrieve-jieba'
 import { retrieveVector } from './utils/retrieve-vector'
 
+export interface FetchMessagesOptions {
+  topicId?: string
+  includeDeleted?: boolean
+  minId?: number
+  maxId?: number
+}
+
 function notDeletedCondition() {
   return eq(chatMessagesTable.deleted_at, 0)
 }
@@ -33,6 +40,41 @@ function ownerScopedCondition(accountId: string) {
     ${chatMessagesTable.owner_account_id} = ${accountId}
     OR ${chatMessagesTable.owner_account_id} IS NULL
   )`
+}
+
+function deleteScopedCondition(accountId: string, chatId?: string) {
+  if (chatId) {
+    return ownerScopedCondition(accountId)
+  }
+
+  return sql`(
+    ${chatMessagesTable.owner_account_id} = ${accountId}
+    OR (
+      ${chatMessagesTable.owner_account_id} IS NULL
+      AND ${chatMessagesTable.in_chat_type} != 'channel'
+      AND EXISTS (
+        SELECT 1
+        FROM ${accountJoinedChatsTable}
+        INNER JOIN ${joinedChatsTable}
+          ON ${joinedChatsTable.id} = ${accountJoinedChatsTable.joined_chat_id}
+        WHERE ${accountJoinedChatsTable.account_id} = ${accountId}
+          AND ${joinedChatsTable.chat_id} = ${chatMessagesTable.in_chat_id}
+          AND ${joinedChatsTable.chat_type} != 'channel'
+      )
+    )
+  )`
+}
+
+function normalizeFetchMessagesOptions(topicIdOrOptions?: string | FetchMessagesOptions): FetchMessagesOptions {
+  if (typeof topicIdOrOptions === 'string') {
+    return { topicId: topicIdOrOptions }
+  }
+
+  return topicIdOrOptions ?? {}
+}
+
+function platformMessageIdNumber() {
+  return sql<number>`COALESCE(CAST(NULLIF(${chatMessagesTable.platform_message_id}, '') AS BIGINT), 0)`
 }
 
 /**
@@ -180,18 +222,19 @@ async function softDeleteMessages(
   messageIds: string[],
   options?: {
     chatId?: string
+    deletedAt?: number
   },
 ): Promise<number> {
   if (messageIds.length === 0) {
     return 0
   }
 
-  const now = Date.now()
+  const deletedAt = options?.deletedAt ?? Date.now()
   const conditions = [
     notDeletedCondition(),
     eq(chatMessagesTable.platform, 'telegram'),
     inArray(chatMessagesTable.platform_message_id, messageIds),
-    ownerScopedCondition(accountId),
+    deleteScopedCondition(accountId, options?.chatId),
   ]
 
   if (options?.chatId) {
@@ -201,8 +244,8 @@ async function softDeleteMessages(
   const result = await db
     .update(chatMessagesTable)
     .set({
-      deleted_at: now,
-      updated_at: now,
+      deleted_at: deletedAt,
+      updated_at: deletedAt,
     })
     .where(and(...conditions))
     .returning()
@@ -219,13 +262,17 @@ async function fetchMessages(
   accountId: string,
   chatId: string,
   pagination: CorePagination,
-  topicId?: string,
+  topicIdOrOptions?: string | FetchMessagesOptions,
 ): PromiseResult<{ dbMessagesResults: DBSelectMessage[], coreMessages: CoreMessage[] }> {
   return withResult(async () => {
+    const options = normalizeFetchMessagesOptions(topicIdOrOptions)
+    const messageIdNumber = platformMessageIdNumber()
     const conditions = [
       eq(chatMessagesTable.in_chat_id, chatId),
-      notDeletedCondition(),
-      topicId !== undefined ? eq(chatMessagesTable.topic_id, topicId) : undefined,
+      options.includeDeleted ? undefined : notDeletedCondition(),
+      options.topicId !== undefined ? eq(chatMessagesTable.topic_id, options.topicId) : undefined,
+      options.minId !== undefined ? gt(messageIdNumber, options.minId) : undefined,
+      options.maxId !== undefined ? lt(messageIdNumber, options.maxId) : undefined,
       // ACL: for private dialogs, only return messages owned by this account (or legacy NULL owner).
       sql`(
         ${joinedChatsTable.chat_type} != 'user'
@@ -244,7 +291,7 @@ async function fetchMessages(
       .where(and(...conditions))
       .orderBy(
         desc(chatMessagesTable.platform_timestamp),
-        desc(sql<number>`COALESCE(CAST(NULLIF(${chatMessagesTable.platform_message_id}, '') AS BIGINT), 0)`),
+        desc(messageIdNumber),
       )
       .limit(pagination.limit)
       .offset(pagination.offset)
@@ -265,10 +312,10 @@ async function fetchMessagesWithPhotos(
   accountId: string,
   chatId: string,
   pagination: CorePagination,
-  topicId?: string,
+  topicIdOrOptions?: string | FetchMessagesOptions,
 ): PromiseResult<CoreMessage[]> {
   return withResult(async () => {
-    const { dbMessagesResults, coreMessages } = (await fetchMessages(db, accountId, chatId, pagination, topicId)).expect('Failed to fetch messages')
+    const { dbMessagesResults, coreMessages } = (await fetchMessages(db, accountId, chatId, pagination, topicIdOrOptions)).expect('Failed to fetch messages')
 
     // Fetch photos for all messages in batch
     const messageIds = dbMessagesResults.map(msg => msg.id)

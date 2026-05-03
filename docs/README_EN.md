@@ -69,6 +69,7 @@
 - [x] Smart unread message summaries: Instantly aggregate all unread content with a concise AI-generated summary
 - [x] Date range filtering for quickly narrowing down search results
 - [x] Context menu to jump to the original Telegram message, with mobile support
+- [x] Deleted message retention: messages deleted by the other party remain visible in the chat, marked as "Deleted"; deletions that occur while offline are caught up automatically on reconnect
 
 ## 🛣️ Roadmap
 

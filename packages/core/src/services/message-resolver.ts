@@ -29,6 +29,7 @@ export function createMessageResolverService(
       topicIdOverride?: string
       forceRefetch?: boolean
       batchId?: string
+      emitMessageData?: boolean
     } = {},
   ) {
     return withSpan('resolver:processMessages', () => processMessagesInner(messages, options), {
@@ -46,6 +47,7 @@ export function createMessageResolverService(
       topicIdOverride?: string
       forceRefetch?: boolean
       batchId?: string
+      emitMessageData?: boolean
     } = {},
   ) {
     const start = performance.now()
@@ -142,7 +144,7 @@ export function createMessageResolverService(
       }
     }
 
-    if (!options.takeout) {
+    if (!options.takeout && options.emitMessageData !== false) {
       ctx.emitter.emit(CoreEventType.MessageData, { messages: coreMessages })
     }
 
@@ -164,7 +166,7 @@ export function createMessageResolverService(
           }
           else if (resolver.stream) {
             for await (const message of resolver.stream(baseResolverOpts)) {
-              if (!options.takeout) {
+              if (!options.takeout && options.emitMessageData !== false) {
                 ctx.emitter.emit(CoreEventType.MessageData, { messages: [message] })
               }
 

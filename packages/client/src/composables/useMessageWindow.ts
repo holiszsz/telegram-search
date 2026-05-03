@@ -64,6 +64,16 @@ export class MessageWindow {
     return this.messages.has(msgId)
   }
 
+  update(msgId: string, updater: (message: CoreMessage) => CoreMessage): void {
+    const message = this.messages.get(msgId)
+    if (!message) {
+      return
+    }
+
+    this.messages.set(msgId, updater(message))
+    this.lastAccessTime = Date.now()
+  }
+
   remove(msgId: string): void {
     this.cleanupMessage(msgId)
     this.recalcBounds()

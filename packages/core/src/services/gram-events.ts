@@ -94,8 +94,8 @@ export function createGramEventsService(ctx: CoreContext, logger: Logger) {
         })
       }
       else if (event instanceof DeletedMessageEvent) {
-        const chatId = getPeerChannelId(event.peer)
         const { pts, isChannel } = getDeletedMessageEventChannel(event.peer)
+        const chatId = isChannel ? getPeerChannelId(event.peer) : undefined
         ctx.emitter.emit(CoreEventType.GramMessageDeleted, {
           messageIds: event.deletedIds.map(id => id.toString()),
           chatId,

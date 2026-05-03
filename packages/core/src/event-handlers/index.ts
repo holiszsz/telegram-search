@@ -2,6 +2,7 @@ import type { Logger } from '@guiiai/logg'
 import type { Config } from '@tg-search/common'
 
 import type { CoreContext } from '../context'
+import type { MessageResolverService } from '../services/message-resolver'
 import type { MediaBinaryProvider } from '../types/storage'
 
 import { useLogger } from '@guiiai/logg'
@@ -43,6 +44,8 @@ import { registerTakeoutEventHandlers } from './takeout'
 
 type EventHandler<T = void> = (ctx: CoreContext, config: Config, mediaBinaryProvider: MediaBinaryProvider | undefined) => T
 
+let sharedMessageResolverService: MessageResolverService | undefined
+
 export function basicEventHandler(ctx: CoreContext, config: Config, mediaBinaryProvider: MediaBinaryProvider | undefined): EventHandler {
   const logger = useLogger()
 
@@ -55,6 +58,7 @@ export function basicEventHandler(ctx: CoreContext, config: Config, mediaBinaryP
   })
   const configService = createAccountSettingsService(ctx, logger)
   const messageResolverService = createMessageResolverService(ctx, logger, registry)
+  sharedMessageResolverService = messageResolverService
 
   registry.register('media', createMediaResolver(ctx, logger, photoModels, stickerModels, mediaBinaryProvider))
   registry.register('user', createUserResolver(ctx, logger, userModels))
@@ -128,7 +132,7 @@ export function afterConnectedEventHandler(ctx: CoreContext): EventHandler {
     logger = logger.withFields({ accountId })
 
     registerEntityEventHandlers(ctx, logger)(entityService)
-    registerMessageEventHandlers(ctx, logger, models, dialogService)(messageService)
+    registerMessageEventHandlers(ctx, logger, models, dialogService, sharedMessageResolverService)(messageService)
     registerDialogEventHandlers(ctx, logger, models)(dialogService)
     registerTakeoutEventHandlers(ctx, takeoutService)
     registerGramEventsEventHandlers(

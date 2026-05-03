@@ -8,6 +8,7 @@ import type { GramEventsService } from '../services/gram-events'
 
 import { Api } from 'telegram'
 
+import { applyDeleteUpdate } from '../services/apply-delete-update'
 import { CoreEventType } from '../types/events'
 
 export function registerGramEventsEventHandlers(
@@ -94,27 +95,12 @@ export function registerGramEventsEventHandlers(
     })
 
     ctx.emitter.on(CoreEventType.GramMessageDeleted, async ({ messageIds, chatId, isChannel, pts }) => {
-      const accountId = ctx.getCurrentAccountId()
-      if (messageIds.length === 0)
-        return
-
-      const deletedCount = await chatMessageModels.softDeleteMessages(ctx.getDB(), accountId, messageIds, chatId ? { chatId } : undefined)
-
-      if (isChannel && chatId && pts !== undefined) {
-        await chatModels.updateChatPts(ctx.getDB(), accountId, chatId, pts)
-      }
-      else if (!isChannel && pts !== undefined) {
-        await accountModels.updateAccountState(ctx.getDB(), accountId, {
-          pts,
-        })
-      }
-
-      ctx.emitter.emit(CoreEventType.MessageDeleted, {
-        chatId,
+      await applyDeleteUpdate(ctx, logger, { accountModels, chatModels, chatMessageModels }, {
         messageIds,
+        chatId,
+        isChannel,
+        pts,
       })
-
-      logger.withFields({ messageIds, chatId, isChannel, deletedCount }).verbose('Messages soft-deleted')
     })
   }
 }

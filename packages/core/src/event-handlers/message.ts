@@ -4,6 +4,8 @@ import type { CoreContext } from '../context'
 import type { Models } from '../models'
 import type { MessageService } from '../services'
 import type { DialogService } from '../services/dialog'
+import type { MessageResolverService } from '../services/message-resolver'
+import type { FetchMessageOpts } from '../types/events'
 import type { CoreMessage } from '../types/message'
 
 import { Api } from 'telegram/tl'
@@ -14,7 +16,7 @@ import { CoreEventType } from '../types/events'
 import { convertToCoreMessage } from '../utils/message'
 import { syncTopicsAndAttachRoots } from './utils/sync-topics'
 
-export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, dbModels?: Models, dialogService?: DialogService) {
+export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, dbModels?: Models, dialogService?: DialogService, messageResolverService?: MessageResolverService) {
   logger = logger.withContext('core:message:event')
 
   return (messageService: MessageService) => {
@@ -47,6 +49,38 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
       if (messages.length > 0) {
         ctx.emitter.emit(CoreEventType.MessageProcess, { messages, topicIdOverride: options.topicIdOverride })
       }
+    }
+
+    async function collectMessages(messageSource: AsyncGenerator<Api.Message>) {
+      const messages: Api.Message[] = []
+      for await (const message of messageSource) {
+        messages.push(message)
+      }
+      return messages
+    }
+
+    async function fetchStoredMessages(opts: FetchMessageOpts) {
+      if (!dbModels) {
+        return []
+      }
+
+      const accountId = ctx.getCurrentAccountId()
+      return (await dbModels.chatMessageModels.fetchMessagesWithPhotos(
+        ctx.getDB(),
+        dbModels.photoModels,
+        accountId,
+        opts.chatId,
+        opts.pagination,
+        {
+          includeDeleted: true,
+          minId: opts.minId,
+          maxId: opts.maxId,
+        },
+      )).unwrap()
+    }
+
+    function isStoredPageComplete(messages: CoreMessage[], opts: FetchMessageOpts) {
+      return messages.length >= opts.pagination.limit
     }
 
     async function ensureTopicMetadata(chatId: string, topicId: string): Promise<{ found: boolean, fallbackToStorage: boolean }> {
@@ -89,7 +123,26 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, d
       logger.withFields({ chatId: opts.chatId, minId: opts.minId, maxId: opts.maxId }).verbose('Fetching messages')
 
       try {
-        await emitFetchedMessages(messageService.fetchMessages(opts.chatId, opts))
+        if (!dbModels || !messageResolverService) {
+          await emitFetchedMessages(messageService.fetchMessages(opts.chatId, opts))
+          return
+        }
+
+        const storedMessages = await fetchStoredMessages(opts)
+        if (isStoredPageComplete(storedMessages, opts)) {
+          ctx.emitter.emit(CoreEventType.MessageData, { messages: storedMessages })
+          return
+        }
+
+        const telegramMessages = await collectMessages(messageService.fetchMessages(opts.chatId, opts))
+        if (telegramMessages.length > 0) {
+          await messageResolverService.processMessages(telegramMessages, {
+            emitMessageData: false,
+          })
+        }
+
+        const mergedMessages = await fetchStoredMessages(opts)
+        ctx.emitter.emit(CoreEventType.MessageData, { messages: mergedMessages })
       }
       catch (error) {
         ctx.withError(error, 'Failed to fetch messages')

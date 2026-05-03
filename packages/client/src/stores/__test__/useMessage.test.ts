@@ -151,4 +151,58 @@ describe('useMessageStore', () => {
 
     expect(isLoading.value).toBe(false)
   })
+
+  it('fetches topic messages through the topic-aware Telegram event', async () => {
+    const store = useMessageStore()
+    const { fetchMessages } = store.useFetchMessages('chat-1', 50, () => 'topic-1')
+
+    let resolvePromise: (value: any) => void
+    // eslint-disable-next-line style/max-statements-per-line
+    const promise = new Promise((resolve) => { resolvePromise = resolve })
+    waitForEventMock.mockReturnValue(promise)
+
+    const pagination: CorePagination & { minId?: number } = { offset: 0, limit: 20 }
+    const fetchPromise = fetchMessages(pagination, 'older')
+
+    expect(sendEventMock).toHaveBeenCalledWith(CoreEventType.MessageFetchTopic, {
+      chatId: 'chat-1',
+      topicId: 'topic-1',
+      pagination,
+      minId: undefined,
+      maxId: undefined,
+    })
+
+    // @ts-expect-error intentionally resolve for test
+    resolvePromise({ messages: [] })
+    await fetchPromise
+  })
+
+  it('fetches older topic pages with a message-id cursor', async () => {
+    const store = useMessageStore()
+    store.replaceMessages([
+      createTestMessage({ platformMessageId: '100', chatId: 'chat-1', content: 'msg 100', platformTimestamp: 1000, topicId: 'topic-1' }),
+      createTestMessage({ platformMessageId: '120', chatId: 'chat-1', content: 'msg 120', platformTimestamp: 1200, topicId: 'topic-1' }),
+    ], { chatId: 'chat-1', topicId: 'topic-1' })
+
+    const { fetchMessages } = store.useFetchMessages('chat-1', 50, () => 'topic-1')
+
+    let resolvePromise: (value: any) => void
+    // eslint-disable-next-line style/max-statements-per-line
+    const promise = new Promise((resolve) => { resolvePromise = resolve })
+    waitForEventMock.mockReturnValue(promise)
+
+    const fetchPromise = fetchMessages({ offset: 20, limit: 20 }, 'older')
+
+    expect(sendEventMock).toHaveBeenCalledWith(CoreEventType.MessageFetchTopic, {
+      chatId: 'chat-1',
+      topicId: 'topic-1',
+      pagination: { offset: 0, limit: 20 },
+      minId: undefined,
+      maxId: 100,
+    })
+
+    // @ts-expect-error intentionally resolve for test
+    resolvePromise({ messages: [] })
+    await fetchPromise
+  })
 })

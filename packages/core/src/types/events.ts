@@ -30,6 +30,7 @@ export enum CoreEventType {
   ConfigData = 'config:data',
 
   MessageFetch = 'message:fetch',
+  MessageFetchTopic = 'message:fetch:topic',
   MessageFetchAbort = 'message:fetch:abort',
   MessageFetchSpecific = 'message:fetch:specific',
   MessageFetchUnread = 'message:fetch:unread',
@@ -173,6 +174,7 @@ export interface AccountSettingsEventFromCore {
 
 export interface MessageEventToCore {
   [CoreEventType.MessageFetch]: (data: FetchMessageOpts) => void
+  [CoreEventType.MessageFetchTopic]: (data: FetchTopicMessageOpts) => void
   [CoreEventType.MessageFetchAbort]: (data: { taskId: string }) => void
   [CoreEventType.MessageFetchSpecific]: (data: { chatId: string, messageIds: number[] }) => void
   [CoreEventType.MessageFetchUnread]: (data: FetchUnreadMessageOpts) => void
@@ -225,6 +227,10 @@ export interface FetchMessageOpts {
   // Incremental export
   minId?: number
   maxId?: number
+}
+
+export type FetchTopicMessageOpts = FetchMessageOpts & {
+  topicId: string
 }
 
 // ============================================================================

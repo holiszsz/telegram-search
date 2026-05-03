@@ -145,9 +145,28 @@ async function getTopicsByChatId(db: CoreDB, chatId: string, accountId: string):
   })
 }
 
+async function findTopMessageId(db: CoreDB, chatId: string, topicId: string): PromiseResult<string | undefined> {
+  return withResult(async () => {
+    const rows = await db
+      .select({
+        top_message_id: chatTopicsTable.top_message_id,
+      })
+      .from(chatTopicsTable)
+      .where(and(
+        eq(chatTopicsTable.platform, 'telegram'),
+        eq(chatTopicsTable.chat_id, chatId),
+        eq(chatTopicsTable.topic_id, topicId),
+      ))
+      .limit(1)
+
+    return rows[0]?.top_message_id ?? undefined
+  })
+}
+
 export const chatTopicModels = {
   recordTopics,
   getTopicsByChatId,
+  findTopMessageId,
 }
 
 export type ChatTopicModels = typeof chatTopicModels

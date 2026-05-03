@@ -455,6 +455,7 @@ export const useMessageStore = defineStore('message', () => {
     async function fetchMessages(
       pagination: CorePagination & {
         minId?: number
+        maxId?: number
       },
       direction: 'older' | 'newer' = 'older',
     ) {
@@ -471,12 +472,22 @@ export const useMessageStore = defineStore('message', () => {
 
       // Then, fetch the messages from server & update the cache
       if (activeTopicId) {
-        bridge.sendEvent(CoreEventType.StorageFetchMessages, {
+        const currentMinId = messageWindow.value?.minId
+        const maxId = direction === 'older'
+          && currentMinId !== undefined
+          && Number.isFinite(currentMinId)
+          ? currentMinId
+          : pagination.maxId
+        const topicPagination = direction === 'newer' || maxId
+          ? { offset: 0, limit: pagination.limit }
+          : pagination
+
+        bridge.sendEvent(CoreEventType.MessageFetchTopic, {
           chatId,
           topicId: activeTopicId,
-          pagination: direction === 'newer'
-            ? { offset: 0, limit: pagination.limit }
-            : pagination,
+          pagination: topicPagination,
+          minId: direction === 'newer' ? pagination.minId : undefined,
+          maxId,
         })
       }
       else {

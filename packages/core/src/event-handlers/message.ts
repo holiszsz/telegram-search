@@ -1,7 +1,9 @@
 import type { Logger } from '@guiiai/logg'
 
 import type { CoreContext } from '../context'
+import type { Models } from '../models'
 import type { MessageService } from '../services'
+import type { DialogService } from '../services/dialog'
 import type { CoreMessage } from '../types/message'
 
 import { Api } from 'telegram/tl'
@@ -11,7 +13,7 @@ import { MESSAGE_PROCESS_BATCH_SIZE } from '../constants'
 import { CoreEventType } from '../types/events'
 import { convertToCoreMessage } from '../utils/message'
 
-export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger) {
+export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger, dbModels?: Models, dialogService?: DialogService) {
   logger = logger.withContext('core:message:event')
 
   return (messageService: MessageService) => {
@@ -21,32 +23,95 @@ export function registerMessageEventHandlers(ctx: CoreContext, logger: Logger) {
         .map(result => result.unwrap())
     }
 
+    async function emitFetchedMessages(messageSource: AsyncGenerator<Api.Message>) {
+      let messages: Api.Message[] = []
+      for await (const message of messageSource) {
+        messages.push(message)
+
+        const batchSize = MESSAGE_PROCESS_BATCH_SIZE
+        if (messages.length >= batchSize) {
+          logger.withFields({
+            total: messages.length,
+            batchSize,
+          }).debug('Processing message batch')
+
+          ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
+          messages = []
+        }
+      }
+
+      if (messages.length > 0) {
+        ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
+      }
+    }
+
+    async function resolveTopicTopMessageId(chatId: string, topicId: string): Promise<{ topMessageId?: string, fallbackToStorage: boolean }> {
+      if (!dbModels) {
+        ctx.withError('Missing db models', 'Cannot resolve forum topic metadata')
+        return { fallbackToStorage: false }
+      }
+
+      const accountId = ctx.getCurrentAccountId()
+      const hasAccess = (await dbModels.chatModels.isChatAccessibleByAccount(ctx.getDB(), accountId, chatId)).expect('Failed to check chat access')
+      if (!hasAccess) {
+        ctx.withError('Unauthorized chat access', 'Account does not have access to requested topic messages')
+        return { fallbackToStorage: false }
+      }
+
+      const topMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve topic root message')
+      if (topMessageId) {
+        return { topMessageId, fallbackToStorage: true }
+      }
+
+      if (!dialogService) {
+        ctx.withError('Missing dialog service', 'Cannot sync forum topic metadata')
+        return { fallbackToStorage: true }
+      }
+
+      const chatAccess = (await dbModels.chatModels.findChatAccessHash(ctx.getDB(), accountId, chatId)).expect('Failed to resolve chat access hash')
+      if (!chatAccess?.accessHash) {
+        ctx.withError('Missing chat access hash', 'Cannot sync forum topics without a stored access hash')
+        return { fallbackToStorage: true }
+      }
+
+      const topics = (await dialogService.fetchTopics(chatId, chatAccess.accessHash)).expect('Failed to fetch forum topics')
+      await dbModels.chatTopicModels.recordTopics(ctx.getDB(), topics, 'telegram', accountId)
+
+      const syncedTopMessageId = (await dbModels.chatTopicModels.findTopMessageId(ctx.getDB(), chatId, topicId)).expect('Failed to resolve synced topic root message')
+      return { topMessageId: syncedTopMessageId, fallbackToStorage: true }
+    }
+
     ctx.emitter.on(CoreEventType.MessageFetch, async (opts) => {
       logger.withFields({ chatId: opts.chatId, minId: opts.minId, maxId: opts.maxId }).verbose('Fetching messages')
 
-      let messages: Api.Message[] = []
       try {
-        for await (const message of messageService.fetchMessages(opts.chatId, opts)) {
-          messages.push(message)
-
-          const batchSize = MESSAGE_PROCESS_BATCH_SIZE
-          if (messages.length >= batchSize) {
-            logger.withFields({
-              total: messages.length,
-              batchSize,
-            }).debug('Processing message batch')
-
-            ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
-            messages = []
-          }
-        }
-
-        if (messages.length > 0) {
-          ctx.emitter.emit(CoreEventType.MessageProcess, { messages })
-        }
+        await emitFetchedMessages(messageService.fetchMessages(opts.chatId, opts))
       }
       catch (error) {
         ctx.withError(error, 'Failed to fetch messages')
+      }
+    })
+
+    ctx.emitter.on(CoreEventType.MessageFetchTopic, async (opts) => {
+      logger.withFields({ chatId: opts.chatId, topicId: opts.topicId, minId: opts.minId, maxId: opts.maxId }).verbose('Fetching topic messages')
+
+      try {
+        const { topMessageId, fallbackToStorage } = await resolveTopicTopMessageId(opts.chatId, opts.topicId)
+        if (!topMessageId) {
+          if (fallbackToStorage) {
+            ctx.emitter.emit(CoreEventType.StorageFetchMessages, {
+              chatId: opts.chatId,
+              topicId: opts.topicId,
+              pagination: opts.pagination,
+            })
+          }
+          return
+        }
+
+        await emitFetchedMessages(messageService.fetchTopicMessages(opts.chatId, topMessageId, opts))
+      }
+      catch (error) {
+        ctx.withError(error, 'Failed to fetch topic messages')
       }
     })
 

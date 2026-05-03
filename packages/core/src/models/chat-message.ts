@@ -118,7 +118,13 @@ async function recordMessages(
 
         // Platform timestamp: always update
         platform_timestamp: sql`excluded.platform_timestamp`,
-        topic_id: sql`excluded.topic_id`,
+        // Topic metadata can be missing on some Telegram fetch/update shapes.
+        // Preserve a previously recovered topic_id instead of wiping it with ''.
+        topic_id: sql`CASE
+          WHEN excluded.topic_id IS NOT NULL AND excluded.topic_id <> ''
+          THEN excluded.topic_id
+          ELSE ${chatMessagesTable.topic_id}
+        END`,
         updated_at: Date.now(),
       },
     })
@@ -199,7 +205,10 @@ async function fetchMessages(
       .from(chatMessagesTable)
       .innerJoin(joinedChatsTable, eq(chatMessagesTable.in_chat_id, joinedChatsTable.chat_id))
       .where(and(...conditions))
-      .orderBy(desc(chatMessagesTable.created_at))
+      .orderBy(
+        desc(chatMessagesTable.platform_timestamp),
+        desc(sql<number>`COALESCE(CAST(NULLIF(${chatMessagesTable.platform_message_id}, '') AS BIGINT), 0)`),
+      )
       .limit(pagination.limit)
       .offset(pagination.offset)
 

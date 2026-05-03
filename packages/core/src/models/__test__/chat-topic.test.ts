@@ -49,4 +49,25 @@ describe('models/chat-topic', () => {
     expect(accountRows[0].last_read_inbox_msg_id).toBe('20')
     expect(topics[0].unreadCount).toBe(5)
   })
+
+  it('findTopMessageId resolves the Telegram topic root message id', async () => {
+    const db = await setupDb()
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    await chatTopicModels.recordTopics(db, [{
+      chatId: 'chat-1',
+      topicId: 'topic-1',
+      topMessageId: '777',
+      title: 'Topic title',
+    }], 'telegram', account.id)
+
+    const topMessageId = (await chatTopicModels.findTopMessageId(db, 'chat-1', 'topic-1')).unwrap()
+    const missingTopMessageId = (await chatTopicModels.findTopMessageId(db, 'chat-1', 'missing-topic')).unwrap()
+
+    expect(topMessageId).toBe('777')
+    expect(missingTopMessageId).toBeUndefined()
+  })
 })

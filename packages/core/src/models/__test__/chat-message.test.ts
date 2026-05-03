@@ -5,6 +5,7 @@ import type { CoreMessage } from '../../types/message'
 // eslint-disable-next-line unicorn/prefer-node-protocol
 import { Buffer } from 'buffer'
 
+import { eq } from 'drizzle-orm'
 import { v4 as uuidv4 } from 'uuid'
 import { describe, expect, it } from 'vitest'
 
@@ -150,7 +151,51 @@ describe('models/chat-message', () => {
     expect(rows[0].content).toBe('after topic extraction')
   })
 
-  it('fetchMessages enforces ACL and returns messages ordered by created_at desc', async () => {
+  it('recordMessages preserves an existing topic_id when a later fetch misses topic metadata', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({
+        uuid: uuidv4(),
+        platformMessageId: '10',
+        chatId: chat.chat_id,
+        topicId: '777',
+        content: 'with topic metadata',
+      }),
+    ])
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({
+        uuid: uuidv4(),
+        platformMessageId: '10',
+        chatId: chat.chat_id,
+        content: 'without topic metadata',
+      }),
+    ])
+
+    const rows = await db.select().from(chatMessagesTable)
+
+    // Some Telegram fetch/update shapes omit replyTo topic data; that must not
+    // erase a topic_id recovered by an earlier ingestion.
+    expect(rows).toHaveLength(1)
+    expect(rows[0].topic_id).toBe('777')
+    expect(rows[0].content).toBe('without topic metadata')
+  })
+
+  it('fetchMessages enforces ACL and returns messages ordered by platform_timestamp desc', async () => {
     const db = await setupDb()
 
     const [account] = await db.insert(accountsTable).values({
@@ -229,8 +274,72 @@ describe('models/chat-message', () => {
     expect(dbMessagesResults).toHaveLength(2)
     expect(coreMessages).toHaveLength(2)
 
-    // Ordered by created_at desc => message 3 then message 1
+    // Ordered by Telegram send time desc => message 3 then message 1.
     expect(dbMessagesResults.map(m => m.platform_message_id)).toEqual(['3', '1'])
+  })
+
+  it('fetchMessages orders by Telegram timestamp instead of insertion time', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '1', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '2', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 2000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '3', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 3000 }),
+    ])
+
+    await db.update(chatMessagesTable).set({ created_at: 5000 }).where(eq(chatMessagesTable.platform_message_id, '1'))
+    await db.update(chatMessagesTable).set({ created_at: 3000 }).where(eq(chatMessagesTable.platform_message_id, '2'))
+    await db.update(chatMessagesTable).set({ created_at: 1000 }).where(eq(chatMessagesTable.platform_message_id, '3'))
+
+    const result = await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 }, 'alpha')
+    const { dbMessagesResults } = result.unwrap()
+
+    // Topic views used to sort by DB insertion time, so backfilled old messages
+    // could hide newer Telegram messages at the top of the page.
+    expect(dbMessagesResults.map(message => message.platform_message_id)).toEqual(['3', '2', '1'])
+  })
+
+  it('fetchMessages uses numeric message id ordering for same-timestamp ties', async () => {
+    const db = await setupDb()
+
+    const [account] = await db.insert(accountsTable).values({
+      platform: 'telegram',
+      platform_user_id: 'user-1',
+    }).returning()
+
+    const [chat] = await db.insert(joinedChatsTable).values({
+      platform: 'telegram',
+      chat_id: 'forum-chat',
+      chat_name: 'Forum Chat',
+      chat_type: 'supergroup',
+      is_forum: true,
+    }).returning()
+
+    await chatMessageModels.recordMessages(db, account.id, [
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '9', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '10', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1000 }),
+      buildCoreMessage({ uuid: uuidv4(), platformMessageId: '11', chatId: chat.chat_id, topicId: 'alpha', platformTimestamp: 1000 }),
+    ])
+
+    const result = await chatMessageModels.fetchMessages(db, account.id, chat.chat_id, { limit: 10, offset: 0 }, 'alpha')
+    const { dbMessagesResults } = result.unwrap()
+
+    // platform_message_id is stored as text; lexicographic desc would place '9'
+    // before '11' and make pagination unstable for messages in the same second.
+    expect(dbMessagesResults.map(message => message.platform_message_id)).toEqual(['11', '10', '9'])
   })
 
   it('fetchMessages filters by topicId when provided', async () => {

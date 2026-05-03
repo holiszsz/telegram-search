@@ -1,8 +1,10 @@
 import type { Logger } from '@guiiai/logg'
 
 import type { CoreContext } from '../context'
-import type { FetchMessageOpts } from '../types/events'
+import type { FetchMessageOpts, FetchTopicMessageOpts } from '../types/events'
 import type { EntityService } from './entity'
+
+import bigInt from 'big-integer'
 
 import { withSpan } from '@tg-search/observability'
 import { Ok } from '@unbird/result'
@@ -56,6 +58,56 @@ export function createMessageService(ctx: CoreContext, logger: Logger, entitySer
 
     for (const message of messages) {
       if (message instanceof Api.MessageEmpty) {
+        continue
+      }
+      yield message
+    }
+  }
+
+  async function* fetchTopicMessages(
+    chatId: string,
+    topMessageId: string,
+    options: Omit<FetchTopicMessageOpts, 'chatId' | 'topicId'>,
+  ): AsyncGenerator<Api.Message> {
+    if (!await ctx.getClient().isUserAuthorized()) {
+      throw new Error('User not authorized')
+    }
+
+    const limit = options.pagination.limit
+    const minId = options?.minId
+    const maxId = options?.maxId
+    const offsetId = maxId && maxId > 0 ? maxId : 0
+    const addOffset = offsetId > 0 ? 0 : options.pagination.offset
+
+    logger.withFields({
+      chatId,
+      topMessageId,
+      limit,
+      minId,
+      maxId,
+      offsetId,
+      addOffset,
+    }).verbose('Fetch topic messages options')
+
+    const peer = await entityService.getInputPeer(chatId)
+    const result = await ctx.getClient().invoke(new Api.messages.GetReplies({
+      peer,
+      msgId: Number(topMessageId),
+      offsetId,
+      addOffset,
+      limit,
+      maxId,
+      minId,
+      hash: bigInt(0),
+    }))
+
+    if (!('messages' in result) || result.messages.length === 0) {
+      logger.warn('GetReplies returned empty data')
+      return
+    }
+
+    for (const message of result.messages) {
+      if (!isValidApiMessage(message)) {
         continue
       }
       yield message
@@ -314,6 +366,7 @@ export function createMessageService(ctx: CoreContext, logger: Logger, entitySer
 
   return {
     fetchMessages,
+    fetchTopicMessages,
     sendMessage,
     fetchSpecificMessages,
     fetchUnreadMessages,

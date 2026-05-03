@@ -82,4 +82,43 @@ describe('services/message', () => {
     expect(client.invoke).toHaveBeenCalledTimes(1)
     expect(client.getMessages).not.toHaveBeenCalled()
   })
+
+  it('fetchTopicMessages uses maxId as a GetReplies offset cursor', async () => {
+    const message = new Api.Message({
+      id: 119,
+      peerId: new Api.PeerChannel({ channelId: bigInt(123) }),
+      message: 'topic message',
+      date: Math.floor(Date.now() / 1000),
+    })
+    const client = {
+      isUserAuthorized: vi.fn(async () => true),
+      invoke: vi.fn(async (_request: Api.messages.GetReplies) => new Api.messages.Messages({
+        messages: [message],
+        chats: [],
+        users: [],
+      })),
+    }
+
+    const { ctx } = createMockCtx(client)
+    const service = createMessageService(ctx, logger, entityService as any)
+    const result: Api.Message[] = []
+
+    for await (const fetchedMessage of service.fetchTopicMessages('chat-1', '777', {
+      pagination: { offset: 50, limit: 20 },
+      maxId: 120,
+    })) {
+      result.push(fetchedMessage)
+    }
+
+    expect(client.invoke).toHaveBeenCalledTimes(1)
+    const request = client.invoke.mock.calls[0]![0]
+
+    // Deep topic pagination should use Telegram's message-id cursor instead of
+    // relying on count-based addOffset scans.
+    expect(request).toBeInstanceOf(Api.messages.GetReplies)
+    expect(request.offsetId).toBe(120)
+    expect(request.addOffset).toBe(0)
+    expect(request.maxId).toBe(120)
+    expect(result).toEqual([message])
+  })
 })

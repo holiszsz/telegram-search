@@ -3,6 +3,8 @@ name: telegram-search
 services:
   pgvector:
     image: ghcr.io/tensorchord/pgvecto-rs:pg17-v0.4.0
+    ports:
+      - "127.0.0.1:5435:5432"
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DATABASE: postgres

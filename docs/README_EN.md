@@ -155,6 +155,12 @@ All environment variables are optional. If not provided, the default values will
 | `MINIO_SECRET_KEY`  | MinIO secret key                                             | `minioadmin`                                          |
 | `MINIO_BUCKET`      | MinIO bucket name                                            | `telegram-media`                                      |
 
+### Operations Notes
+
+- Docker Compose uses the standard `pgvector/pgvector:pg17` image and initializes the `vector` extension.
+- When migrating from a legacy `pgvecto-rs` / `vectors` database, take a database backup first, then convert `vectors.vector(...)` columns and `USING vectors` indexes to standard `public.vector(...)` columns and `USING hnsw (... vector_cosine_ops)` indexes.
+- If ViewPulse uses the read-only `viewpulse_ro` role, reset its password after backup restore or migration. See [Operations](./OPERATIONS.md).
+
 ### Deploy with Docker Image
 
 Please modify the environment variables according to your needs.

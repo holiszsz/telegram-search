@@ -19,6 +19,7 @@ tsconfig.tsbuildinfo
 coverage/
 *.heapsnapshot
 *.cpuprofile
+backups/
 *.local
 .ghfs
 .turbo

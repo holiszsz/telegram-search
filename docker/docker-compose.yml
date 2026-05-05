@@ -2,16 +2,16 @@ name: telegram-search
 
 services:
   pgvector:
-    image: ghcr.io/tensorchord/pgvecto-rs:pg17-v0.4.0
+    image: pgvector/pgvector:pg17
     ports:
-      - "127.0.0.1:5435:5432"
+      - '127.0.0.1:5435:5432'
     environment:
       POSTGRES_USER: postgres
       POSTGRES_DATABASE: postgres
       POSTGRES_PASSWORD: '123456'
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
-      - pgvector_data:/var/lib/postgresql/data
+      - pgvector_data_pgvector:/var/lib/postgresql/data
     healthcheck:
       test: [CMD-SHELL, pg_isready -d postgres -U postgres]
       interval: 10s
@@ -63,5 +63,6 @@ services:
 
 volumes:
   pgvector_data:
+  pgvector_data_pgvector:
   app_data:
   minio_data:

@@ -98,3 +98,7 @@ Concise but detailed reference for contributors working in the `groupultra/teleg
 - Use `docker-compose.yml` as the compose filename.
 - Do not write SQL migration files manually. Always use `drizzle-kit generate` to create migrations, which will be placed in `**/sql/` with descriptive, kebab-case names.
 - Avoid Postgres enums to keep migrations and imports flexible.
+
+## Runtime Constraints
+
+- **pgvector restart → app restart**: When the pgvector container is restarted, the `telegram-search-app-1` container must be restarted in the same operation. The app's Postgres connection pool does not auto-rebuild after pgvector goes away — surviving connections raise `pgvecto.rs: IPC connection is closed unexpectedly`, photo queries hang, and the photo proxy returns silent 502s. Treat the two as a coupled restart unit until the pool-reconnect defect is fixed in code.

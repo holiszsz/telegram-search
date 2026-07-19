@@ -286,3 +286,5 @@ Stream-based message processing through multiple resolvers:
 The application supports two database modes:
 - **PostgreSQL + pgvector**: For production deployments with full vector search capabilities
 - **PGlite**: In-browser PostgreSQL for browser-only mode (experimental)
+
+Docker Compose uses the standard `pgvector/pgvector:pg17` image. Do not add new schema or runtime paths that depend on the legacy `pgvecto-rs` `vectors` extension; vector columns should use standard pgvector types and HNSW indexes.

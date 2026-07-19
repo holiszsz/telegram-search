@@ -150,6 +150,12 @@ docker run -d --name telegram-search -p 3333:3333 ghcr.io/groupultra/telegram-se
 | `MINIO_SECRET_KEY`  | MinIO 访问密钥对应的密钥                                                     | `minioadmin`                                          |
 | `MINIO_BUCKET`      | MinIO 存储桶名称                                                             | `telegram-media`                                      |
 
+### 运维说明
+
+- Docker Compose 使用标准 `pgvector/pgvector:pg17` 镜像，并在初始化时创建 `vector` 扩展。
+- 从旧 `pgvecto-rs` / `vectors` 数据库切换到标准 `pgvector` 时，必须先备份数据库，并把 `vectors.vector(...)` 列和 `USING vectors` 索引转换为标准 `public.vector(...)` 与 `USING hnsw (... vector_cosine_ops)`。
+- 如需给 ViewPulse 配置只读访问，迁移或恢复备份后需要重新设置 `viewpulse_ro` 密码；详见 [Operations](./docs/OPERATIONS.md)。
+
 #### 使用 Docker Image 环境变量
 
 请根据自己的需要自行修改环境变量。

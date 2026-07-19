@@ -102,3 +102,34 @@ Concise but detailed reference for contributors working in the `groupultra/teleg
 ## Runtime Constraints
 
 - **pgvector restart → app restart**: When the pgvector container is restarted, the `telegram-search-app-1` container must be restarted in the same operation. The app's Postgres connection pool does not auto-rebuild after pgvector goes away — surviving connections raise `pgvecto.rs: IPC connection is closed unexpectedly`, photo queries hang, and the photo proxy returns silent 502s. Treat the two as a coupled restart unit until the pool-reconnect defect is fixed in code.
+
+---
+
+# IssueOps Agent Workflow
+
+State for every task lives in its GitHub issue (labels + agent-handoff comments), not
+in terminal output or session history. Full model: `holiszsz/IssueOps` →
+`docs/multi_agent_tracking_workflow.md`.
+
+## Source of truth
+- Every task must be tied to a GitHub issue. Update the issue before stopping work.
+- The state label on the issue is the only machine-readable truth; comments are detail.
+
+## Before coding
+1. Read the issue, latest agent-handoff comment, linked PRs, and current branch state.
+2. Summarize your plan; identify validation commands and risks.
+3. Wait for approval unless the issue says implementation is pre-approved.
+
+## Before stopping (mandatory)
+Run `gh handoff --issue <N> --status <status> ...`.
+If the fix needs hours/days of observation, use status waiting-for-soak and include
+verify_after (ISO 8601 with offset), a validation_id from this machine's predefined
+validation list, expected/failure signals, machine, process name, log path, and how
+to stop/restart. If no predefined validation fits, describe the needed command in
+prose and use status needs-my-decision so the human can add it to the allowlist first.
+If `gh handoff` is unavailable, print the full handoff markdown (with the JSON block)
+so the human can paste it.
+
+## Never
+- Never close issues or merge PRs unless explicitly instructed.
+- Never silently skip failed tests; say exactly what was not validated.

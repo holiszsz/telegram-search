@@ -2,8 +2,9 @@
 
 ## Current phase
 
-IssueOps #28 narrows the production Mac mini boundary while preserving Telegram
-Search on the existing Tailscale Serve root `:443`.
+IssueOps #28 is live on the production Mac mini: Telegram Search remains on the
+existing Tailscale Serve root `:443`, while its app and database host ports are
+loopback-only and MinIO has no host-published ports.
 
 ## Completed
 
@@ -13,26 +14,36 @@ Search on the existing Tailscale Serve root `:443`.
 - The Compose change publishes the app only on `127.0.0.1:3333`.
 - The Tailnet boundary regression test, full workspace tests, typecheck, lint, and
   Compose validation pass.
+- The authorized ACL rule now exposes `443` instead of `3333`; no other policy
+  entry changed.
+- The Mac mini fast-forwarded to merged PR #1 and recreated only the app
+  container. pgvector, MinIO, volumes, and the Serve configuration were
+  preserved.
+- Root HTTPS, `/health`, WebSocket connection, ViewPulse's read-only database
+  path, and ViewPulse's real Telegram photo proxy pass after the cutover.
+- Raw Tailnet ports `3333` and `5435` time out from the authorized MacBook.
+- An app-only restart recovered to healthy without restarting pgvector or MinIO.
+- The private port registry now lists only `3333` and `5435` for this project;
+  stale MinIO entries `9000` and `9001` were removed.
 
 ## In progress
 
-- Publish and merge the code/documentation PR, including the already-running
-  standard pgvector production commit.
+- Run one authenticated, read-only search through the Serve URL and open one
+  result. The available browser session is not logged in to Telegram, so the
+  server correctly reports `accountReady=false` for a new WebSocket session.
 
 ## Blocked
 
-- The production cutover requires an exact ACL change in the admin console:
-  replace `3333` with `443` in the existing MacBook-to-Mac-mini rule only. Runtime
-  deployment must not proceed until that control-plane change is explicitly
-  approved and root HTTPS is verified from the authorized peer.
+- The authenticated search smoke test needs a user-authenticated Telegram Search
+  browser session. No Telegram credential or private message content was read for
+  automated acceptance.
 
 ## Next
 
-- Fast-forward the Mac mini checkout after merge.
-- Recreate only the app container and preserve pgvector, MinIO, and all volumes.
-- Verify HTTPS, health, WebSocket, search, media, ViewPulse, and raw-port denial.
-- Update the private port registry only after the live boundary is verified.
-- Post the structured IssueOps #28 handoff.
+- Complete the authenticated read-only search smoke test and post the final
+  structured IssueOps #28 handoff.
+- Keep the full Mac mini reboot continuity test in IssueOps #27 Phase 4, after
+  the remaining Tailnet projects have been migrated.
 
 ## Latest validation
 
@@ -41,3 +52,13 @@ Search on the existing Tailscale Serve root `:443`.
 - 2026-07-19: TypeScript/Turbo typecheck passed, 14 tasks.
 - 2026-07-19: `pnpm run lint:fix` passed without unrelated tracked changes.
 - 2026-07-19: `docker compose config --quiet` passed.
+- 2026-07-19: root HTTPS and `/health` returned `200` with valid TLS before and
+  after the app-only restart.
+- 2026-07-19: WSS returned `server:connected`; a new unauthenticated session
+  correctly reported `accountReady=false`.
+- 2026-07-19: ViewPulse read `388238` messages and `26435` photos through its
+  configured read-only database role; one real photo proxy returned JPEG `200`.
+- 2026-07-19: raw Tailnet `3333` and `5435` timed out; local pgvector remained
+  ready and MinIO remained unpublished.
+- 2026-07-19: private acceptance evidence was archived on the Mac mini under
+  `/Users/kami/.local/state/telegram-search/28/20260719T221627Z`.

@@ -4,7 +4,8 @@
 
 IssueOps #28 is live on the production Mac mini: Telegram Search remains on the
 existing Tailscale Serve root `:443`, while its app and database host ports are
-loopback-only and MinIO has no host-published ports.
+loopback-only and MinIO has no host-published ports. The implementation is ready
+for IssueOps revalidation.
 
 ## Completed
 
@@ -25,23 +26,23 @@ loopback-only and MinIO has no host-published ports.
 - An app-only restart recovered to healthy without restarting pgvector or MinIO.
 - The private port registry now lists only `3333` and `5435` for this project;
   stale MinIO entries `9000` and `9001` were removed.
+- The authenticated search smoke test is explicitly `NOT RUN`. The user accepted
+  it as a non-blocking residual because this Tailnet-only change is covered by
+  HTTPS, WSS, full-suite search tests, the read-only database path, and a real
+  media proxy response; no personal Telegram session was persisted for this
+  acceptance run.
 
 ## In progress
 
-- Run one authenticated, read-only search through the Serve URL and open one
-  result. The available browser session is not logged in to Telegram, so the
-  server correctly reports `accountReady=false` for a new WebSocket session.
+- None for IssueOps #28.
 
 ## Blocked
 
-- The authenticated search smoke test needs a user-authenticated Telegram Search
-  browser session. No Telegram credential or private message content was read for
-  automated acceptance.
+- None for IssueOps #28.
 
 ## Next
 
-- Complete the authenticated read-only search smoke test and post the final
-  structured IssueOps #28 handoff.
+- Advance the Tailnet epic to twitter-db #4.
 - Keep the full Mac mini reboot continuity test in IssueOps #27 Phase 4, after
   the remaining Tailnet projects have been migrated.
 
@@ -62,3 +63,6 @@ loopback-only and MinIO has no host-published ports.
   ready and MinIO remained unpublished.
 - 2026-07-19: private acceptance evidence was archived on the Mac mini under
   `/Users/kami/.local/state/telegram-search/28/20260719T221627Z`.
+- 2026-07-19: the user approved the authenticated search smoke as a non-blocking
+  `NOT RUN` residual; the accidental, potentially secret-bearing inspection
+  artifact was deleted and the final checksum manifest was rebuilt.

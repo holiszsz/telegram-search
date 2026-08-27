@@ -61,6 +61,10 @@ for IssueOps revalidation.
   writer produced two non-empty `entity_urls` rows in other natural channels.
   The four ViewPulse #149 target channels have not emitted a post-login message
   yet.
+- 2026-08-27: a regular `GetHistory` check bounded to
+  `2026-08-27T06:00:00Z..06:17:41Z` completed normally for all four target
+  channels and returned no in-window message. The zero target sample is upstream
+  inactivity, not a listener or scheduler lag.
 - 2026-08-27: a UI-equivalent incremental-sync attempt was aborted after it
   revealed that the current incremental path continues by filling historical
   gaps. Before the abort it touched about 2,700 BWETradFi rows and populated 43

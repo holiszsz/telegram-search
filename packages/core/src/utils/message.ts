@@ -11,6 +11,40 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { parseMediaId, parseMediaType } from './media'
 
+export function extractMessageEntityUrls(message: Pick<Api.Message, 'message' | 'entities'>): string[] {
+  const urls: string[] = []
+  const seen = new Set<string>()
+
+  for (const entity of message.entities ?? []) {
+    let candidate: string | undefined
+
+    if (entity instanceof Api.MessageEntityTextUrl) {
+      candidate = entity.url
+    }
+    else if (entity instanceof Api.MessageEntityUrl) {
+      candidate = message.message.slice(entity.offset, entity.offset + entity.length)
+    }
+
+    const trimmed = candidate?.trim()
+    if (!trimmed || seen.has(trimmed))
+      continue
+
+    try {
+      const protocol = new URL(trimmed).protocol
+      if (protocol !== 'http:' && protocol !== 'https:')
+        continue
+    }
+    catch {
+      continue
+    }
+
+    seen.add(trimmed)
+    urls.push(trimmed)
+  }
+
+  return urls
+}
+
 export function convertToCoreMessage(message: Api.Message): Result<CoreMessage> {
   const messageUUID = uuidv4()
 
@@ -92,6 +126,7 @@ export function convertToCoreMessage(message: Api.Message): Result<CoreMessage> 
       fromId,
       fromName,
       content,
+      entityUrls: extractMessageEntityUrls(message),
       topicId,
       media,
       reply,

@@ -260,6 +260,13 @@
       "when": 1777762746309,
       "tag": "0036_cold_pride",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1787808306814,
+      "tag": "0037_add-chat-message-entity-urls",
+      "breakpoints": true
     }
   ]
 }

@@ -22,6 +22,7 @@ export const chatMessagesTable = pgTable('chat_messages', {
   in_chat_type: text().$type<JoinedChatType>().notNull(),
   topic_id: text().notNull().default(''),
   content: text().notNull().default(''),
+  entity_urls: jsonb().$type<string[]>().notNull().default([]),
   is_reply: boolean().notNull().default(false),
   reply_to_name: text().notNull().default(''),
   reply_to_id: text().notNull().default(''),

@@ -34,7 +34,11 @@ for IssueOps revalidation.
 
 ## In progress
 
-- None for IssueOps #28.
+- ViewPulse #149 dependency: persist Telegram HTTP(S) message entity URLs in
+  `chat_messages.entity_urls` so downstream exact-origin projection can consume
+  hidden `MessageEntityTextUrl` links. The additive migration and application
+  changes are implemented and locally validated; production migration and
+  app-only rollout are pending.
 
 ## Blocked
 
@@ -47,6 +51,13 @@ for IssueOps revalidation.
   the remaining Tailnet projects have been migrated.
 
 ## Latest validation
+
+- 2026-08-27: ViewPulse #149 entity URL extraction and DB conversion tests
+  passed, 9 tests.
+- 2026-08-27: core Vitest passed with one worker, 30 files and 158 tests; the
+  first parallel run hit four existing 5-second PGlite setup timeouts.
+- 2026-08-27: TypeScript/Turbo typecheck passed, 14 tasks; `pnpm run lint:fix`
+  passed without unrelated tracked changes.
 
 - 2026-07-19: Tailnet boundary Vitest passed, 3 tests.
 - 2026-07-19: full Vitest suite passed, 58 files and 350 tests.

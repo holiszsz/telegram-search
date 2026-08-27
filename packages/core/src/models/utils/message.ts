@@ -23,6 +23,7 @@ export function convertToCoreMessageFromDB(message: DBSelectMessage): CoreMessag
     fromUserUuid: message.from_user_uuid ?? undefined,
 
     content: message.content,
+    entityUrls: Array.isArray(message.entity_urls) ? message.entity_urls : [],
     topicId: message.topic_id || undefined,
 
     reply: {
@@ -60,6 +61,7 @@ export function convertToDBInsertMessage(
     in_chat_type: type,
     topic_id: message.topicId ?? '',
     content: message.content,
+    entity_urls: message.entityUrls ?? [],
     is_reply: message.reply.isReply,
     reply_to_name: message.reply.replyToName,
     reply_to_id: message.reply.replyToId,

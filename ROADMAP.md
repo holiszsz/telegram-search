@@ -38,15 +38,16 @@ for IssueOps revalidation.
 
 ## In progress
 
-- None for the repository-side ViewPulse #149 dependency.
+- The repository-side ViewPulse #149 dependency is complete. Downstream
+  acceptance is observing the four target channels through the restored live
+  Telegram listener and normal schedulers; target channels have not emitted a
+  post-login message yet.
 
 ## Blocked
 
 - None for IssueOps #28.
-- ViewPulse #149 natural downstream acceptance requires the Telegram account to
-  log in again after the app-only restart. The recovered browser session was
-  rejected by Telegram as unauthorized, so no post-deploy natural
-  `entity_urls` row exists yet; historical rows remain `[]` by design.
+- None for ViewPulse #149 authentication. The MacBook Pro logged in again at
+  2026-08-27 06:00Z; GramJS connected and completed catch-up.
 
 ## Next
 
@@ -56,6 +57,16 @@ for IssueOps revalidation.
 
 ## Latest validation
 
+- 2026-08-27: the production Telegram account listener was restored and the new
+  writer produced two non-empty `entity_urls` rows in other natural channels.
+  The four ViewPulse #149 target channels have not emitted a post-login message
+  yet.
+- 2026-08-27: a UI-equivalent incremental-sync attempt was aborted after it
+  revealed that the current incremental path continues by filling historical
+  gaps. Before the abort it touched about 2,700 BWETradFi rows and populated 43
+  historical `entity_urls` values. Those rows are excluded from ViewPulse #149
+  natural acceptance; no further unbounded incremental or historical sync will
+  be used for that acceptance.
 - 2026-08-27: production app image revision `db4da055` applied migration
   `0037_add-chat-message-entity-urls`; `entity_urls` is non-null JSONB with
   default `[]`, and app, pgvector, and MinIO are healthy. pgvector and MinIO were

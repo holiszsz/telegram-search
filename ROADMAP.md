@@ -31,18 +31,22 @@ for IssueOps revalidation.
   HTTPS, WSS, full-suite search tests, the read-only database path, and a real
   media proxy response; no personal Telegram session was persisted for this
   acceptance run.
+- ViewPulse #149 dependency now persists Telegram HTTP(S) message entity URLs in
+  `chat_messages.entity_urls`, including hidden `MessageEntityTextUrl` links.
+  PR #4 is merged at `db4da055`; additive migration
+  `0037_add-chat-message-entity-urls` and the app image are deployed.
 
 ## In progress
 
-- ViewPulse #149 dependency: persist Telegram HTTP(S) message entity URLs in
-  `chat_messages.entity_urls` so downstream exact-origin projection can consume
-  hidden `MessageEntityTextUrl` links. The additive migration and application
-  changes are implemented and locally validated; production migration and
-  app-only rollout are pending.
+- None for the repository-side ViewPulse #149 dependency.
 
 ## Blocked
 
 - None for IssueOps #28.
+- ViewPulse #149 natural downstream acceptance requires the Telegram account to
+  log in again after the app-only restart. The recovered browser session was
+  rejected by Telegram as unauthorized, so no post-deploy natural
+  `entity_urls` row exists yet; historical rows remain `[]` by design.
 
 ## Next
 
@@ -52,6 +56,10 @@ for IssueOps revalidation.
 
 ## Latest validation
 
+- 2026-08-27: production app image revision `db4da055` applied migration
+  `0037_add-chat-message-entity-urls`; `entity_urls` is non-null JSONB with
+  default `[]`, and app, pgvector, and MinIO are healthy. pgvector and MinIO were
+  not recreated.
 - 2026-08-27: ViewPulse #149 entity URL extraction and DB conversion tests
   passed, 9 tests.
 - 2026-08-27: core Vitest passed with one worker, 30 files and 158 tests; the

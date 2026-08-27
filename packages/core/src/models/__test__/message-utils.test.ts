@@ -24,6 +24,7 @@ function buildDBSelectMessage(overrides: Partial<DBSelectMessage> = {}): DBSelec
     in_chat_type: overrides.in_chat_type ?? 'user',
     topic_id: overrides.topic_id ?? '',
     content: overrides.content ?? 'content',
+    entity_urls: overrides.entity_urls ?? [],
     is_reply: overrides.is_reply ?? false,
     reply_to_name: overrides.reply_to_name ?? '',
     reply_to_id: overrides.reply_to_id ?? '',
@@ -48,6 +49,7 @@ function buildCoreMessage(overrides: Partial<CoreMessage> = {}): CoreMessage {
     fromId: overrides.fromId ?? 'from-1',
     fromName: overrides.fromName ?? 'From 1',
     content: overrides.content ?? 'content',
+    entityUrls: overrides.entityUrls,
     reply: overrides.reply ?? { isReply: false, replyToId: undefined, replyToName: undefined },
     forward: overrides.forward ?? { isForward: false },
     platformTimestamp: overrides.platformTimestamp ?? 1,
@@ -71,6 +73,7 @@ describe('models/utils/message', () => {
         from_name: 'From 42',
         from_user_uuid: 'user-uuid',
         content: 'hello world',
+        entity_urls: ['https://example.com/news'],
         is_reply: true,
         reply_to_id: '21',
         reply_to_name: 'Reply To',
@@ -89,6 +92,7 @@ describe('models/utils/message', () => {
       expect(core.fromName).toBe('From 42')
       expect(core.fromUserUuid).toBe('user-uuid')
       expect(core.content).toBe('hello world')
+      expect(core.entityUrls).toEqual(['https://example.com/news'])
       expect(core.reply.isReply).toBe(true)
       expect(core.reply.replyToId).toBe('21')
       expect(core.reply.replyToName).toBe('Reply To')
@@ -119,6 +123,7 @@ describe('models/utils/message', () => {
         fromId: 'from-1',
         fromName: 'From 1',
         content: 'some-content',
+        entityUrls: ['https://example.com/source'],
         reply: { isReply: false, replyToId: undefined, replyToName: undefined },
         platformTimestamp: 999,
       })
@@ -135,6 +140,7 @@ describe('models/utils/message', () => {
       expect(dbInsert.from_id).toBe(core.fromId)
       expect(dbInsert.from_name).toBe(core.fromName)
       expect(dbInsert.content).toBe(core.content)
+      expect(dbInsert.entity_urls).toEqual(['https://example.com/source'])
       expect(dbInsert.is_reply).toBe(false)
       expect(dbInsert.reply_to_id).toBeUndefined()
       expect(dbInsert.reply_to_name).toBeUndefined()

@@ -12,6 +12,7 @@ export interface CoreMessage {
   fromUserUuid?: string
 
   content: string
+  entityUrls?: string[]
   topicId?: string
   media?: CoreMessageMedia[]
 

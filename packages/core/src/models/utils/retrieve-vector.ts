@@ -65,6 +65,7 @@ export async function retrieveVector(
       in_chat_type: chatMessagesTable.in_chat_type,
       topic_id: chatMessagesTable.topic_id,
       content: chatMessagesTable.content,
+      entity_urls: chatMessagesTable.entity_urls,
       is_reply: chatMessagesTable.is_reply,
       reply_to_name: chatMessagesTable.reply_to_name,
       reply_to_id: chatMessagesTable.reply_to_id,

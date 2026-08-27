@@ -1,0 +1,1 @@
+ALTER TABLE "chat_messages" ADD COLUMN "entity_urls" jsonb DEFAULT '[]'::jsonb NOT NULL;

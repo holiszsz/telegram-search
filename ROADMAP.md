@@ -38,16 +38,17 @@ for IssueOps revalidation.
 
 ## In progress
 
-- The repository-side ViewPulse #149 dependency is complete. Downstream
-  acceptance is observing the four target channels through the restored live
-  Telegram listener and normal schedulers; target channels have not emitted a
-  post-login message yet.
+- None for the repository-side ViewPulse #149 dependency.
 
 ## Blocked
 
 - None for IssueOps #28.
 - None for ViewPulse #149 authentication. The MacBook Pro logged in again at
   2026-08-27 06:00Z; GramJS connected and completed catch-up.
+- ViewPulse #149 downstream natural acceptance is externally blocked: through
+  06:20:44Z the four target channels emitted no message after the login
+  boundary, while all four ViewPulse ingest cursors remained successful. Resume
+  revalidation when any target channel publishes a natural post-login message.
 
 ## Next
 
